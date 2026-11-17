@@ -2760,6 +2760,7 @@ function startGame() {
   const selMap = coopMode ? 'city' : $('optMap').value;
   settings = { bots: +$('optBots').value, diff: +$('optDiff').value, sens: +$('optSens').value };
   killLimit = $('optMode').value === 'ffa' ? (+$('optKills').value || 0) : KILL_LIMIT; // 솔로 FFA: 선승제 선택 (0 = 없음)
+  cheatLoad(''); // 솔로 새 게임: 치트 횟수 초기화
   for (const f of fighters) { if (f.mesh) { scene.remove(f.mesh); disposeObj(f.mesh); } removeArc(f); }
   fighters.length = 0;
   clearDynamic();
@@ -4201,9 +4202,23 @@ $('cMap').addEventListener('change', () => previewMap($('cMap').value));
 const meteors = [];
 let meteorV = 0, meteorApplied = 0, meteorFlash = 0, meteorFF = false;
 const _redC = new THREE.Color(0x7a1a0c), METEOR_T = 5, METEOR_CORE = 10, METEOR_MAX = 70;
+// 메테오 / 가미카제: 게임당 한 사람이 각각 3번까지. 온라인에서는 방 id + 방 시드로 저장해 나갔다 같은 방에 다시 들어와도 유지됨 (방이 비어 새 시드가 되면 초기화)
+const CHEAT_MAX = 3;
+let cheatCnt = { met: 0, kmk: 0 }, cheatKey = '';
+function cheatLoad(key) {
+  cheatKey = key; cheatCnt = { met: 0, kmk: 0 };
+  if (key) { try { const o = JSON.parse(localStorage.getItem(key) || 'null'); if (o) cheatCnt = { met: o.met | 0, kmk: o.kmk | 0 }; } catch (e) {} }
+}
+function cheatUse(k) {
+  if (cheatCnt[k] >= CHEAT_MAX) return false;
+  cheatCnt[k]++;
+  if (cheatKey) { try { localStorage.setItem(cheatKey, JSON.stringify(cheatCnt)); } catch (e) {} }
+  return true;
+}
 function cheatMeteor() {
   if (!player || !player.alive || !inMatchState()) return;
   if (meteors.some(m => m.mine && !m.hit)) return; // 메테오가 떨어지는 동안에는 다시 발동할 수 없음
+  if (!cheatUse('met')) return; // 게임당 3번까지
   startMeteor(player.pos.x, player.pos.y, player.pos.z, true);
   if (NET.on) netSend({ t: 'met', x: r2(player.pos.x), y: r2(player.pos.y), z: r2(player.pos.z) });
 }
@@ -4320,7 +4335,7 @@ function cheatKamikaze() {
     const d = f.pos.distanceTo(player.pos);
     if (!best || f.pos.y > best.pos.y + 0.3 || (Math.abs(f.pos.y - best.pos.y) <= 0.3 && d < bd)) { best = f; bd = d; }
   }
-  if (!best) return;
+  if (!best || !cheatUse('kmk')) return; // 게임당 3번까지
   const ang = Math.random() * Math.PI * 2, sx = best.pos.x + Math.cos(ang) * 95, sy = best.pos.y + 210 + Math.random() * 40, sz = best.pos.z + Math.sin(ang) * 95;
   startKamikaze(best.pos.x, best.pos.y + 1, best.pos.z, best.netId || '', true, sx, sy, sz, best);
   if (NET.on) netSend({ t: 'kmk', x: r2(best.pos.x), y: r2(best.pos.y + 1), z: r2(best.pos.z), tid: best.netId || '', sx: r2(sx), sy: r2(sy), sz: r2(sz) });
@@ -4701,6 +4716,7 @@ function startNetGame(info) {
   const pname = netPname();
   try { localStorage.setItem('laserName', pname === '당신' ? '' : pname); } catch (e) {}
   teamsMode = info.mode === 'teams'; teamScore.red = 0; teamScore.blue = 0; killLimit = (!info.priv && info.map !== 'mansion' && info.mode !== 'coop') ? 0 : KILL_LIMIT; // 공용방(저택·폐허 도시 제외)은 선승제 없음, 개인방은 20킬 선취
+  cheatLoad('laserCheat:' + info.id + ':' + info.seed); // 같은 방(같은 시드)에 다시 들어오면 사용 횟수 유지
   NET.info = info; NET.hostId = info.host; NET.isHost = info.host === NET.id; NET.botSeq = 0; NET.acc = 0; NET.dmgAcc.clear();
   player = new Fighter(pname, teamsMode ? TEAM_COLORS.red : 0x44ddff, true);
   player.netId = 'p' + NET.id; player.owner = NET.id; player.weapon = selectedWeapon;
