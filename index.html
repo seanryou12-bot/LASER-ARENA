@@ -51,6 +51,18 @@
   .ab .nm { font-size: 11px; opacity: .75; }
   .ab .ov { position: absolute; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.6); }
   .ab .cd { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 800; color: #ffd36b; text-shadow: 0 0 4px #000; }
+  .fallenTag, #fallenTag { font-family: "UnifrakturCook","Old English Text MT","Segoe UI Symbol","Noto Sans Math",serif; font-weight: 700; color: #e8e4ff; animation: tinnitus 1.3s infinite steps(1); }
+  #fallenTag { position: absolute; top: 146px; left: 50%; transform: translateX(-50%); font-size: 22px; display: none; letter-spacing: 1px; pointer-events: none; }
+  @keyframes tinnitus {
+    0% { opacity: 1; text-shadow: -2px 0 rgba(255,60,60,.8), 2px 0 rgba(60,255,255,.8); }
+    12% { opacity: .35; text-shadow: 3px 0 rgba(255,60,60,.8), -3px 0 rgba(60,255,255,.8); }
+    25% { opacity: .85; text-shadow: -1px 0 rgba(255,60,60,.6), 1px 0 rgba(60,255,255,.6); }
+    38% { opacity: .3; text-shadow: 2px 1px rgba(255,60,60,.9), -2px -1px rgba(60,255,255,.9); }
+    52% { opacity: 1; text-shadow: -3px 0 rgba(255,60,60,.7), 3px 0 rgba(60,255,255,.7); }
+    66% { opacity: .5; text-shadow: 1px 0 rgba(255,60,60,.8), -1px 0 rgba(60,255,255,.8); }
+    80% { opacity: .95; text-shadow: -2px 1px rgba(255,60,60,.8), 2px -1px rgba(60,255,255,.8); }
+    92% { opacity: .4; text-shadow: 2px 0 rgba(255,60,60,.9), -2px 0 rgba(60,255,255,.9); }
+  }
   #coords { position: absolute; top: 118px; left: 50%; transform: translateX(-50%); padding: 3px 12px; font-size: 12px; opacity: .9; white-space: nowrap; font-variant-numeric: tabular-nums; }
   #score { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); padding: 6px 16px; font-size: 14px; }
   #leftcol { position: absolute; top: 16px; left: 20px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; max-width: min(380px, 46vw); }
@@ -185,6 +197,7 @@
   <div id="dmgflash"></div>
   <div id="score" class="panel"></div>
   <div id="coords" class="panel"></div>
+  <div id="fallenTag"></div>
   <div id="leftcol"><div id="chatlog"></div><input id="chatInput" maxlength="80" placeholder="채팅 입력 후 Enter (Esc 취소)" autocomplete="off"><div id="killfeed"></div></div>
   <div id="leaderboard" class="panel"></div>
   <div id="centermsg"></div>
@@ -330,6 +343,7 @@ const WEAPONS = [
   { id: 'arc',     name: '아크', cd: 0,   dps: 2, range: 30,  continuous: true, color: 0x99aaff, css: '#99aaff', pref: 12 },
   { id: 'mg',      name: '기관총', cd: 0.1, dmg: 2, pellets: 1, range: 400, spread: 0.012, color: 0xffcc33, css: '#ffcc33', width: 0.03, pref: 30 }, // 치트 전용 (인덱스 4)
   { id: 'bazooka', name: '바주카포', cd: 5, dmg: 10, pellets: 1, range: 400, spread: 0, color: 0xff9933, css: '#ff9933', width: 0.12, pref: 40 }, // 무기고 과녁에서만 얻음 (인덱스 5, 6번 키)
+  { id: 'launcher', name: '로켓 런처', cd: 0.5, dmg: 15, pellets: 1, range: 400, spread: 0, color: 0xff5533, css: '#ff5533', width: 0.1, pref: 40 }, // 'The Fallen'(땅 아래로 떨어진 플레이어)에게만 주어짐 (인덱스 6, 7번 키): 추적 로켓 10발 일제 발사
 ];
 const DIFF = [
   { err: 0.09,  react: 0.8, turn: 3.0, speed: 0.85 },
@@ -1600,6 +1614,7 @@ function weaponSound(id, v, pos = null) {
   else if (id === 'arc') tone(rand(300, 900), rand(100, 300), 0.06, 'sawtooth', 0.04 * v, pos);
   else if (id === 'mg') { tone(rand(900, 1300), 400, 0.05, 'square', 0.05 * v, pos); noise(0.05, 0.12 * v, 2500, pos); }
   else if (id === 'bazooka') { tone(220, 40, 0.5, 'sawtooth', 0.2 * v, pos); noise(0.45, 0.3 * v, 1600, pos); }
+  else if (id === 'launcher') { tone(500, 90, 0.35, 'sawtooth', 0.14 * v, pos); noise(0.3, 0.22 * v, 2200, pos); }
 }
 
 // ====================================================================
@@ -1676,7 +1691,7 @@ class Fighter {
   constructor(name, color, isPlayer) {
     Object.assign(this, {
       name, color, isPlayer, pos: V3(), vy: 0, hv: new THREE.Vector2(), yaw: 0, pitch: 0, hp: 10, alive: true,
-      onGround: false, weapon: 0, cds: [0, 0, 0, 0, 0, 0], arnoldUntil: 0, rambo: false, invulnUntil: 0, baseWeapon: 0, extraWeapon: -1, grenadeCD: 0, grenadeActive: false, shieldCD: 0, padCD: 0,
+      onGround: false, weapon: 0, cds: [0, 0, 0, 0, 0, 0, 0], fallen: false, arnoldUntil: 0, rambo: false, invulnUntil: 0, baseWeapon: 0, extraWeapon: -1, grenadeCD: 0, grenadeActive: false, shieldCD: 0, padCD: 0,
       kills: 0, deaths: 0, respawnT: 0, arcFiring: false, arcMesh: null, arcGlow: null, arcSndT: 0, lastHit: -99,
       killedBy: '', killerRef: null, crowns: [], maxHp: 10, team: null, keys: 0, netId: null, remote: false, totalKills: 0, smokes: 0, dopeUntil: 0, owner: 0, arcUntil: 0, arcOn: false,
     });
@@ -1737,20 +1752,35 @@ function buildBotMesh(f) {
   f.label = { cv, ctx: cv.getContext('2d'), tex, last: -1, sp };
   f.flash = 0;
 }
+// 땅 아래로 떨어졌던 플레이어: 이름 앞에 고딕(블랙레터) 'The Fallen' 이 이명처럼 깜빡이며 영구 표시
+const FALLEN_TAG = '𝕿𝖍𝖊 𝕱𝖆𝖑𝖑𝖊𝖓 ';
+const FALLEN_FONT = '"UnifrakturCook","Old English Text MT","Segoe UI Symbol","Noto Sans Math","Malgun Gothic",serif';
+const dispName = f => (f.fallen ? FALLEN_TAG : '') + f.name;
+const nameHtml = f => (f.fallen ? '<span class="fallenTag">' + FALLEN_TAG + '</span>' : '') + esc(f.name);
 function drawLabel(f) {
-  const key = Math.ceil(f.hp * 4) * 1000 + f.maxHp * 10 + f.weapon;
+  const ph = f.fallen ? Math.floor(performance.now() / 110) % 12 : 0;
+  const key = Math.ceil(f.hp * 4) * 1000 + f.maxHp * 10 + f.weapon + (f.fallen ? 1e7 + ph * 1e5 : 0);
   if (key === f.label.last) return;
   f.label.last = key;
   const { ctx, cv, tex } = f.label;
   ctx.clearRect(0, 0, cv.width, cv.height);
-  ctx.font = 'bold 17px "Malgun Gothic", sans-serif'; ctx.textAlign = 'center';
+  ctx.font = (f.fallen ? 'bold 15px ' : 'bold 17px ') + '"Malgun Gothic", sans-serif'; ctx.textAlign = 'center';
   ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,.7)';
   const txt = f.isBear ? f.name : `${f.name} · ${WEAPONS[f.weapon].name}`;
-  ctx.strokeText(txt, 80, 18); ctx.fillStyle = '#' + f.color.toString(16).padStart(6, '0'); ctx.fillText(txt, 80, 18);
-  if (f.maxHp > 20) { ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(5, 28, 150, 13); ctx.fillStyle = '#ff5b3b'; ctx.fillRect(6, 29, 148 * clamp(f.hp / f.maxHp, 0, 1), 11); tex.needsUpdate = true; return; }
+  const ny = f.fallen ? 25 : 18, oy = f.fallen ? 3 : 0;
+  if (f.fallen) { // 이명 같은 깜빡임 + 붉은/푸른 잔상
+    const fl = [1, 0.35, 0.8, 0.5, 1, 0.25, 0.9, 0.6, 1, 0.4, 0.7, 0.3][ph];
+    ctx.font = 'bold 13px ' + FALLEN_FONT; ctx.lineWidth = 3;
+    const tg = FALLEN_TAG.trim(), j = (ph % 3 - 1) * 1.2;
+    ctx.globalAlpha = 0.45 * fl; ctx.fillStyle = '#ff3a3a'; ctx.fillText(tg, 80 - 1.6 + j, 11); ctx.fillStyle = '#3affff'; ctx.fillText(tg, 80 + 1.6 - j, 11);
+    ctx.globalAlpha = 0.35 + 0.65 * fl; ctx.strokeText(tg, 80, 11); ctx.fillStyle = '#e8e4ff'; ctx.fillText(tg, 80, 11); ctx.globalAlpha = 1;
+    ctx.font = 'bold 15px "Malgun Gothic", sans-serif'; ctx.lineWidth = 4;
+  }
+  ctx.strokeText(txt, 80, ny); ctx.fillStyle = '#' + f.color.toString(16).padStart(6, '0'); ctx.fillText(txt, 80, ny);
+  if (f.maxHp > 20) { ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(5, 28 + oy, 150, 13); ctx.fillStyle = '#ff5b3b'; ctx.fillRect(6, 29 + oy, 148 * clamp(f.hp / f.maxHp, 0, 1), 11); tex.needsUpdate = true; return; }
   const n = f.maxHp, step = 150 / n;
   for (let i = 0; i < n; i++) {
-    const x = 5 + i * step, y = 28;
+    const x = 5 + i * step, y = 28 + oy;
     ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(x, y, step - 2, 13);
     const fr = clamp(f.hp - i, 0, 1);
     ctx.fillStyle = f.hp <= 3 ? '#ff4b4b' : '#4dff9a'; ctx.fillRect(x + 1, y + 1, (step - 4) * fr, 11);
@@ -1840,8 +1870,8 @@ function applyKill(t, src, wname) {
   if (src && src !== t && !src.isBear) { src.kills++; src.totalKills = (src.totalKills || 0) + 1; }
   t.kills = 0; // 사망하면 연속 킬 기록은 리셋
   t.crowns = []; t.maxHp = 10; // 왕관 효과도 사라짐
-  const sname = src ? src.name : '?';
-  const tname = t.name;
+  const sname = src ? dispName(src) : '?';
+  const tname = dispName(t);
   botKillChat(src, t);
   if (!isCheatKill(wname)) addFeed(src === t ? `${tname} 자폭 [${wname}]` : `${sname}  [${wname}]  ▶  ${tname}`, (src && src.isPlayer) || t.isPlayer);
   if (t.isPlayer) {
@@ -1868,6 +1898,17 @@ function fireShot(f) {
     if (f.isPlayer) vmKick = 0.3;
     return;
   }
+  if (w.id === 'launcher') { // 로켓 런처: 로켓 10발이 무작위 방향으로 날아다니다가 가까이 있는 적을 발견하면 추적 (피해 15)
+    const dirs = [];
+    for (let i = 0; i < 10; i++) {
+      const d = randomConeDir(aim, 1.75), p = muzzle.clone().add(V3(rand(-0.12, 0.12), rand(-0.12, 0.12), rand(-0.12, 0.12)));
+      spawnRocket(f, p, d, null, 'launcher'); dirs.push(d);
+    }
+    if (NET.on && !f.remote) netSend({ t: 'rl', o: f.netId, p: v3a(muzzle), ds: dirs.map(v3a), tt: dirs.map(() => '') });
+    flashLight(muzzle, w.color, 3, 8, 0.1); weaponSound(w.id, f.isPlayer ? 1 : volAt(f.pos) * 0.7, f.isPlayer ? null : f.pos);
+    if (f.isPlayer) vmKick = 0.25;
+    return;
+  }
   for (let i = 0; i < w.pellets; i++) {
     const dir = spreadDir(aim, w.spread);
     const mh = raycastMap(origin, dir, w.range);
@@ -1886,7 +1927,7 @@ function fireShot(f) {
   weaponSound(w.id, f.isPlayer ? 1 : volAt(f.pos) * 0.7, f.isPlayer ? null : f.pos);
   if (f.isPlayer) vmKick = (w.id === 'photon' || w.id === 'mg') ? 0.04 : (w.id === 'bazooka' ? 0.3 : (w.id === 'beam' ? 0.2 : 0.14));
 }
-const isScoped = w => w.id === 'beam' || w.id === 'bazooka'; // 조준 확대 최대 +200% (빔과 동일)
+const isScoped = w => w.id === 'beam' || w.id === 'bazooka' || w.id === 'launcher'; // 조준 확대: 빔/바주카 최대 +200%, 로켓 런처 최대 +500%
 function bazookaBoom(end, v) {
   const m = new THREE.Mesh(sphGeo, addMat(0xffa030, 0.85)); m.position.copy(end);
   addEffect(m, 0.35, k => { m.scale.setScalar(0.6 + (1 - k) * 2.6); m.material.opacity = 0.85 * k; });
@@ -1903,7 +1944,24 @@ function pickRocketTarget(f, origin, aim) { // 조준선에서 가장 가까운(
   }
   return best;
 }
-function spawnRocket(owner, pos, dir, target) {
+function randomConeDir(aim, half) { // aim 중심 반각 half(rad) 원뿔 안의 무작위 방향 (바닥 쪽으로는 거의 가지 않음)
+  const ct = 1 - Math.random() * (1 - Math.cos(half)), st = Math.sqrt(1 - ct * ct), ph = Math.random() * Math.PI * 2;
+  const u = Math.abs(aim.y) < 0.95 ? V3(0, 1, 0).cross(aim).normalize() : V3(1, 0, 0).cross(aim).normalize(), v = aim.clone().cross(u);
+  const d = aim.clone().multiplyScalar(ct).addScaledVector(u, st * Math.cos(ph)).addScaledVector(v, st * Math.sin(ph));
+  if (d.y < -0.05) { d.y = -0.05; }
+  return d.normalize();
+}
+function pickRocketTargets(f, origin, aim, max) { // 조준선 근처(약 29° 이내) 시야가 트인 적을 가까운 순서로 최대 max명
+  const c = [];
+  for (const o of fighters.concat(bears)) {
+    if (o === f || !o.alive || sameTeam(f, o)) continue;
+    const ang = aim.angleTo(chestPos(o).sub(origin));
+    if (ang < 0.5 && los(f, o)) c.push([ang, o]);
+  }
+  c.sort((a, b) => a[0] - b[0]);
+  return c.slice(0, max).map(x => x[1]);
+}
+function spawnRocket(owner, pos, dir, target, kind = 'bazooka') { // kind 'launcher': 작은 로켓(15 피해), 더 기민하게 추적
   const g = new THREE.Group();
   const steel = new THREE.MeshStandardMaterial({ color: 0x8a9096, metalness: 0.6, roughness: 0.4 }), red = new THREE.MeshStandardMaterial({ color: 0xd8262e, roughness: 0.5 });
   const body = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.6, 10), steel); body.rotation.x = Math.PI / 2;
@@ -1911,20 +1969,22 @@ function spawnRocket(owner, pos, dir, target) {
   g.add(body, nose);
   for (let i = 0; i < 4; i++) { const fin = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.2, 0.14), red); fin.position.z = -0.26; fin.rotation.z = i * Math.PI / 2; fin.translateY(0.1); g.add(fin); }
   const flame = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.55, 8), new THREE.MeshBasicMaterial({ color: 0xffaa33 })); flame.rotation.x = -Math.PI / 2; flame.position.z = -0.55; g.add(flame);
+  const L = kind === 'launcher'; if (L) g.scale.setScalar(0.65);
   g.position.copy(pos); scene.add(g);
-  rockets.push({ owner, pos: pos.clone(), dir: dir.clone().normalize(), spd: 16, target, life: ROCKET_LIFE, g, flame, puff: 0 });
+  rockets.push({ owner, pos: pos.clone(), dir: dir.clone().normalize(), spd: 16, target, life: L ? 8 : ROCKET_LIFE, g, flame, puff: 0, kind, turn: L ? 3.4 : ROCKET_TURN, vmax: L ? 30 : ROCKET_SPEED, acq: Math.random() * 0.15, wt: 0, wax: V3(1, 0, 0), wr: 0 });
 }
-function rocketBlast(c, owner, direct) { // 수류탄과 동일한 폭발 (반경 GRENADE_R, 중앙 10 ~ 외곽 5)
+function rocketBlast(c, owner, direct, kind = 'bazooka') { // 수류탄과 동일한 폭발 (반경 GRENADE_R). 바주카: 중앙 10 ~ 외곽 5 / 런처: 직격 15, 중앙 15 ~ 외곽 7.5 (자신은 안전)
+  const L = kind === 'launcher', base = L ? 15 : 10, vq = L ? 0.3 : 1; // 런처는 10발이 한꺼번에 터지므로 소리를 줄임
   spawnExplosion(c);
-  noise(0.9, 0.6 * Math.max(0.15, volAt(c)), 900, c); tone(120, 30, 0.6, 'sine', 0.4 * Math.max(0.15, volAt(c)), c);
+  noise(0.9, 0.6 * vq * Math.max(0.15, volAt(c)), 900, c); tone(120, 30, 0.6, 'sine', 0.4 * vq * Math.max(0.15, volAt(c)), c);
   for (const f of fighters.concat(bears)) {
-    if (!f.alive) continue;
+    if (!f.alive || (L && f === owner)) continue;
     const t = chestPos(f), d = t.distanceTo(c);
     if (d > GRENADE_R + 0.45) continue;
     const dir = t.clone().sub(c).normalize();
     if (d > 0.5 && raycastMap(c, dir, d - 0.45)) continue; // 장애물 뒤는 안전
     const k = clamp(d / GRENADE_R, 0, 1);
-    damage(f, f === direct ? 10 : 10 - 5 * k, owner, '바주카포', 6 * (1 - k)); // 직격은 10
+    damage(f, f === direct ? base : base - base * 0.5 * k, owner, L ? '로켓 런처' : '바주카포', 6 * (1 - k)); // 직격은 전체 피해
   }
   for (const cr of allCrates.slice()) {
     if (cr.state !== 'idle') continue;
@@ -1937,22 +1997,40 @@ function removeRocket(i) { const r = rockets[i]; scene.remove(r.g); disposeObj(r
 function clearRockets() { while (rockets.length) removeRocket(rockets.length - 1); }
 function updateRockets(dt) {
   for (let i = rockets.length - 1; i >= 0; i--) {
-    const r = rockets[i]; r.life -= dt; r.spd = Math.min(ROCKET_SPEED, r.spd + 70 * dt);
+    const r = rockets[i]; r.life -= dt; r.spd = Math.min(r.vmax, r.spd + 70 * dt);
+    if (r.kind === 'launcher') { // 런처 로켓: 가까운 적이 있으면 추적, 없으면 무작위로 방향을 틀며 날아다님
+      r.acq -= dt;
+      if ((!r.target || !r.target.alive) && r.acq <= 0) {
+        r.acq = 0.15; r.target = null; let bd = 32;
+        for (const o of fighters.concat(bears)) {
+          if (!o.alive || o === r.owner || sameTeam(r.owner, o)) continue;
+          const c = chestPos(o), d = c.distanceTo(r.pos); if (d >= bd) continue;
+          if (raycastMap(r.pos, c.clone().sub(r.pos).normalize(), d - 0.3)) continue; // 벽 너머는 못 봄
+          bd = d; r.target = o;
+        }
+      }
+      if (!r.target) { // 방황: 무작위 축으로 천천히 회전 (0.4초마다 새 축/속도)
+        r.wt -= dt; if (r.wt <= 0) { r.wt = 0.3 + Math.random() * 0.5; r.wax = V3(rand(-1, 1), rand(-1, 1), rand(-1, 1)).normalize(); r.wr = rand(-2.2, 2.2); }
+        r.dir.applyAxisAngle(r.wax, r.wr * dt);
+        if (r.pos.y < 2 && r.dir.y < 0.1) r.dir.y += 2.5 * dt; else if (r.pos.y > 45 && r.dir.y > 0) r.dir.y -= 2.5 * dt;
+        r.dir.normalize();
+      }
+    }
     if (r.target && r.target.alive) { // 표적을 향해 서서히 방향 전환
       const want = chestPos(r.target).sub(r.pos).normalize(), ang = r.dir.angleTo(want);
-      if (ang > 1e-4) { const axis = r.dir.clone().cross(want); if (axis.lengthSq() > 1e-10) r.dir.applyAxisAngle(axis.normalize(), Math.min(ang, ROCKET_TURN * dt)); }
+      if (ang > 1e-4) { const axis = r.dir.clone().cross(want); if (axis.lengthSq() > 1e-10) r.dir.applyAxisAngle(axis.normalize(), Math.min(ang, r.turn * dt)); }
     }
     const len = r.spd * dt, prev = r.pos.clone();
     const mh = raycastMap(prev, r.dir, len + 0.25), fh = rayFighters(prev, r.dir, len + 0.25, r.owner);
     let t = Infinity, direct = null; if (mh) t = mh.distance; if (fh && !sameTeam(r.owner, fh.f) && fh.t < t) { t = fh.t; direct = fh.f; }
     if (t < Infinity || r.life <= 0 || r.pos.y < -60) {
       if (t < Infinity) r.pos.addScaledVector(r.dir, Math.max(0, t - 0.05));
-      rocketBlast(r.pos.clone(), r.owner, direct); removeRocket(i); continue;
+      rocketBlast(r.pos.clone(), r.owner, direct, r.kind); removeRocket(i); continue;
     }
     r.pos.addScaledVector(r.dir, len);
     r.g.position.copy(r.pos); r.g.lookAt(r.pos.clone().add(r.dir)); r.flame.scale.set(1, 1, 0.7 + Math.random() * 0.6);
     r.puff -= dt; if (r.puff <= 0) { // 연기 꼬리
-      r.puff = 0.03; const m = new THREE.Mesh(sphGeo, addMat(Math.random() < 0.4 ? 0xffb040 : 0xd0d0d0, 0.55)); m.position.copy(r.pos).addScaledVector(r.dir, -0.5);
+      r.puff = r.kind === 'launcher' ? 0.07 : 0.03; const m = new THREE.Mesh(sphGeo, addMat(Math.random() < 0.4 ? 0xffb040 : 0xd0d0d0, 0.55)); m.position.copy(r.pos).addScaledVector(r.dir, -0.5);
       addEffect(m, 0.7, k => { m.scale.setScalar(0.1 + (1 - k) * 0.35); m.material.opacity = 0.5 * k; });
     }
   }
@@ -2364,14 +2442,16 @@ function respawn(f) {
   f.yaw = Math.atan2(best[0], best[1]); f.pitch = 0;
   f.vy = 0; f.hv.set(0, 0); f.maxHp = 10; f.crowns = []; f.keys = 0; f.smokes = 0; f.dopeUntil = 0; f.hp = 10; f.alive = true; f.onGround = true;
   f.invulnUntil = performance.now() + 5000;       // 부활 후 5초 무적
-  f.cds = [0, 0, 0, 0, 0, 0]; f.arnoldUntil = 0;
+  f.cds = [0, 0, 0, 0, 0, 0, 0]; f.arnoldUntil = 0;
   f.killerRef = null;
   if (!f.isPlayer) {
     f.weapon = Math.floor(Math.random() * 4); f.target = null; f.aggro = null; f.wp = null; f.route = null; f.react = 1;
     f.label.last = -1;
   }
+  if (f.isPlayer && f.weapon >= 4) f.weapon = f.baseWeapon || 0; // 아놀드 기관총·바주카·런처를 들고 있던 채로 부활해도 원래 무기를 잃지 않게
   f.cheatUsed = {}; // 무기고 / 오마에모신데루 / 요자쿠라는 한 번 살 때마다 1번씩만
-  f.baseWeapon = f.weapon; f.extraWeapon = -1; // 무기고로 얻은 두 번째 무기는 죽으면 사라짐
+  f.baseWeapon = f.weapon; f.extraWeapon = -1;
+  if (f.fallen && f.isPlayer) f.weapon = 6; // The Fallen: 부활해도 로켓 런처를 들고 시작 // 무기고로 얻은 두 번째 무기는 죽으면 사라짐
   // 플레이어의 weapon은 죽음→메뉴 화면에서 고른 값이 respawn() 호출 전에 이미 설정되어 있다.
 }
 
@@ -2537,6 +2617,10 @@ const vmModels = WEAPONS.map(w => {
   } else if (w.id === 'bazooka') {
     cyl(0.075, 0.95, dark, 0, 0.03, -0.35); cyl(0.095, 0.16, mid, 0, 0.03, -0.9); cyl(0.095, 0.1, mid, 0, 0.03, 0.14); box(0.02, 0.04, 0.3, glow, 0, 0.115, -0.3);
     box(0.06, 0.07, 0.1, mid, 0, 0.13, -0.12); cyl(0.05, 0.02, glow, 0, 0.03, -0.99);
+  } else if (w.id === 'launcher') { // 발사관 10개 묶음 (2열 5개 느낌)
+    box(0.26, 0.2, 0.5, dark, 0, 0, -0.3);
+    for (let r = 0; r < 2; r++) for (let c = 0; c < 5; c++) { cyl(0.032, 0.4, mid, -0.1 + c * 0.05, -0.05 + r * 0.1, -0.7); cyl(0.036, 0.02, glow, -0.1 + c * 0.05, -0.05 + r * 0.1, -0.9); }
+    box(0.04, 0.05, 0.3, glow, 0, 0.13, -0.3);
   } else {
     box(0.12, 0.12, 0.4, dark, 0, 0, -0.06); cyl(0.03, 0.3, mid, 0, 0, -0.4);
     for (let i = 0; i < 3; i++) { const t = new THREE.Mesh(new THREE.TorusGeometry(0.055, 0.012, 6, 16), glow); t.position.set(0, 0, -0.3 - i * 0.09); g.add(t); }
@@ -2596,7 +2680,7 @@ function updateCamera(dt) {
     if (isScoped(w)) {
       const mh = raycastMap(eyePos(p), aimDir(p), 400);
       const d = mh ? mh.distance : 400;
-      zt = clamp(1.5 + (d - 10) / 40, 1.5, 3);
+      zt = w.id === 'launcher' ? clamp(1.5 + (d - 10) / 16, 1.5, 6) : clamp(1.5 + (d - 10) / 40, 1.5, 3); // 런처는 거리에 따라 최대 +500%
     } else zt = (w.id === 'photon' || w.id === 'mg') ? 2 : 1.5; // 포톤 / 기관총: 확대 +100% (부드럽게 접근) // 포톤 조준 확대 +100%
   }
   zoom += (zt - zoom) * Math.min(1, dt * 10);
@@ -2647,6 +2731,26 @@ function addFeed(text, highlight) {
   while ($('killfeed').children.length > 6) $('killfeed').lastChild.remove();
 }
 let hintPadT = 0, hintPadShown = false;
+function cheatSave() { if (cheatKey) { try { localStorage.setItem(cheatKey, JSON.stringify(cheatCnt)); } catch (e) {} } }
+function markFallen(f) { f.fallen = true; if (f.label) f.label.last = -1; if (f === player) { cheatCnt.fallen = 1; cheatSave(); } }
+// 바닥을 뚫고 공허로 떨어지는 오류는 그대로 두고(떨어지는 모습 유지), 떨어지다가 지상으로 되돌려지는 순간 The Fallen 으로 표시.
+// 되돌아올 때 사망/부활 처리를 하지 않으므로 무기·왕관·연막탄·체력 등 소지품이 그대로 유지됨
+function voidReturn(f) {
+  const first = !f.fallen; markFallen(f);
+  const enemies = coopMode ? bears.filter(z => z.alive) : fighters.filter(o => o !== f && o.alive && !sameTeam(f, o));
+  let best = null, bd = -1;
+  for (const sp of SPAWNS) {
+    const sy = sp[2] !== undefined ? sp[2] : Math.max(0, support(sp[0], sp[1], 0.5));
+    if (blockedR(sp[0], sp[1], sy, P_H)) continue;
+    let d = 999; for (const e of enemies) d = Math.min(d, Math.hypot(e.pos.x - sp[0], e.pos.z - sp[1]));
+    d += rand(0, 20); if (d > bd) { bd = d; best = [sp[0], sy, sp[1]]; }
+  }
+  if (!best) best = [0, 0, 0];
+  f.pos.set(best[0], best[1], best[2]); f.vy = 0; f.hv.set(0, 0); f.onGround = true;
+  f.invulnUntil = Math.max(f.invulnUntil || 0, performance.now() + 2000); // 돌아온 직후 2초 무적
+  if (first) { f.weapon = 6; zoomActive = false; } // 처음 떨어졌을 때 로켓 런처 지급 (이후엔 7번 키)
+  tone(160, 520, 0.6, 'sawtooth', 0.12);
+}
 function updateHUD(dt) {
   const p = player;
   { // 체력이 15를 넘으면(람보) 칸 하나가 여러 체력을 나타냄
@@ -2678,6 +2782,7 @@ function updateHUD(dt) {
   setAb(abs[2], p.padCD, 60);
   setAb(abs[3], 0, 1, p.smokes > 0 ? p.smokes : '');
   document.body.classList.toggle('dual', ownedWeapons(p).length > 1);
+  { const ft = $('fallenTag'); if (p.fallen) { if (!ft.textContent) ft.textContent = FALLEN_TAG.trim(); ft.style.display = 'block'; } else ft.style.display = 'none'; }
   { // 기본 아레나 (30, 2, 68) 작은 플랫폼 위에 5초 연속으로 서 있으면 힌트 문구가 5초 동안 뜸
     const onPad = currentMapId === 'arena' && p.alive && Math.abs(p.pos.x - 30) < 1.5 && Math.abs(p.pos.z - 68) < 1.5 && Math.abs(p.pos.y - 2) < 0.5;
     if (onPad) { hintPadT += dt; if (hintPadT >= 5 && !hintPadShown) { hintPadShown = true; addFeed("Try typing 'cheats' in chat", true); } }
@@ -2685,6 +2790,7 @@ function updateHUD(dt) {
   }
   $('coords').textContent =`X ${p.pos.x.toFixed(1)}  Y ${p.pos.y.toFixed(1)}  Z ${p.pos.z.toFixed(1)}`; // 내 좌표 (항상 표시)
   wSlots[5].d.style.display = ownedWeapons(p).includes(5) ? '' : 'none'; // 바주카포 슬롯은 보유했을 때만
+  wSlots[6].d.style.display = p.fallen ? '' : 'none'; // 로켓 런처 슬롯은 The Fallen 에게만
   if (IS_MOBILE) $('fireLbl').textContent = WEAPONS[p.weapon].name;
   const ranked = fighters.slice().sort((a, b) => b.kills - a.kills);
   const leader = ranked[0];
@@ -2693,9 +2799,9 @@ function updateHUD(dt) {
   if (coopMode) $('score').innerHTML = `생존 <b>${fmtTime(coopT)}</b> · 좀비 처치 <b>${coopKills}</b> (내 킬 <b>${p.totalKills || 0}</b>) · 데스 <b>${p.deaths}</b>`;
   else if (currentMapId === 'mansion' && !teamsMode) $('score').innerHTML = `탈출 경쟁 · 연속킬 <b>${p.kills}</b> · 데스 <b>${p.deaths}</b>`;
   else if (teamsMode) $('score').innerHTML = `<span style="color:#ff7b7b">빨강 <b>${teamScore.red}</b></span> : <span style="color:#7ba8ff"><b>${teamScore.blue}</b> 파랑</span> <small>(${TEAM_LIMIT} 선취)</small> &nbsp;|&nbsp; 내 팀 <b style="color:${p.team === 'red' ? '#ff7b7b' : '#7ba8ff'}">${TEAM_NAMES[p.team] || ''}</b> · 연속킬 <b>${p.kills}</b> · 데스 <b>${p.deaths}</b>`;
-  else $('score').innerHTML = `연속킬 <b>${p.kills}</b> · 데스 <b>${p.deaths}</b> &nbsp;|&nbsp; 1위 ${esc(leader.name)} ${leader.kills}${killLimit > 0 ? '/' + killLimit : ''}`;
+  else $('score').innerHTML = `연속킬 <b>${p.kills}</b> · 데스 <b>${p.deaths}</b> &nbsp;|&nbsp; 1위 ${nameHtml(leader)} ${leader.kills}${killLimit > 0 ? '/' + killLimit : ''}`;
   $('leaderboard').innerHTML = `<div class="lbTitle">${teamsMode ? '팀전 · 연속 킬 (사망 시 리셋)' : '연속 킬 (사망 시 리셋)'}</div>` + ranked.map(f =>
-    `<div class="lbRow" style="color:${(f.isPlayer && !teamsMode) ? '#8fe3ff' : '#' + f.color.toString(16).padStart(6, '0')}${f.isPlayer ? ';font-weight:800;text-decoration:underline' : ''}"><span>${f.isPlayer ? '▶ ' : ''}${esc(f.name)}</span><b>${f.kills}</b><small style="flex-basis:100%;opacity:.7;font-size:11px;font-weight:400">총 킬 ${f.totalKills || 0}</small></div>`
+    `<div class="lbRow" style="color:${(f.isPlayer && !teamsMode) ? '#8fe3ff' : '#' + f.color.toString(16).padStart(6, '0')}${f.isPlayer ? ';font-weight:800;text-decoration:underline' : ''}"><span>${f.isPlayer ? '▶ ' : ''}${nameHtml(f)}</span><b>${f.kills}</b><small style="flex-basis:100%;opacity:.7;font-size:11px;font-weight:400">총 킬 ${f.totalKills || 0}</small></div>`
   ).join('');
   // 체력이 완전히 회복될 때까지 화면 전체가 붉게, 회복될수록 옅어짐
   const hurtTarget = (p.alive && p.hp < p.maxHp) ? 0.04 + 0.24 * (1 - p.hp / p.maxHp) : 0;
@@ -2708,7 +2814,7 @@ function updateHUD(dt) {
 }
 function scoreTable() {
   const rows = fighters.slice().sort((a, b) => b.kills - a.kills || a.deaths - b.deaths).map((f, i) =>
-    `<tr style="${f.isPlayer ? 'color:#8fe3ff;font-weight:700' : ''}"><td>${i + 1}</td><td><span style="color:#${(f.isPlayer && !teamsMode) ? '44ddff' : f.color.toString(16).padStart(6, '0')}">■</span> ${esc(f.name)}</td><td>${f.isPlayer ? '' : WEAPONS[f.weapon].name}</td><td>${f.kills}</td><td>${f.totalKills || 0}</td><td>${f.deaths}</td></tr>`).join('');
+    `<tr style="${f.isPlayer ? 'color:#8fe3ff;font-weight:700' : ''}"><td>${i + 1}</td><td><span style="color:#${(f.isPlayer && !teamsMode) ? '44ddff' : f.color.toString(16).padStart(6, '0')}">■</span> ${nameHtml(f)}</td><td>${f.isPlayer ? '' : WEAPONS[f.weapon].name}</td><td>${f.kills}</td><td>${f.totalKills || 0}</td><td>${f.deaths}</td></tr>`).join('');
   return `<table><tr><th>#</th><th>이름</th><th>무기</th><th>연속 킬</th><th>총 킬</th><th>데스</th></tr>${rows}</table>`;
 }
 function showScoreboard(on) {
@@ -2900,7 +3006,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyE') placeShield(player);
   if (e.code === 'KeyR') placePad(player);
   if (e.code === 'KeyF') throwSmoke(player);
-  if (/^Digit[1-6]$/.test(e.code)) switchWeapon(+e.code.slice(5) - 1); // 무기고: 보유한 두 무기 중 선택
+  if (/^Digit[1-7]$/.test(e.code)) switchWeapon(+e.code.slice(5) - 1); // 무기고: 보유한 두 무기 중 선택
 });
 addEventListener('wheel', () => { if (state === 'play' && !chatOpen) cycleWeapon(); }, { passive: true });
 addEventListener('keyup', e => { keys[e.code] = false; if (e.code === 'Tab') showScoreboard(false); });
@@ -4077,7 +4183,7 @@ function updateArmory(dt) {
     if (w < 4) spawnTarget(w % 2); // 숨겨진 무기를 먹으면 이어서 피라미드 지하 방에 과녁이 자동으로 생김 (바주카포를 먹을 때는 생기지 않음)
   }
 }
-function ownedWeapons(p) { const l = [p.baseWeapon]; if (p.extraWeapon >= 0) l.push(p.extraWeapon); if (p.arnoldUntil > gameTime) l.push(4); return l; } // 기관총(아놀드)도 숫자키 5로 전환
+function ownedWeapons(p) { const l = [p.baseWeapon]; if (p.extraWeapon >= 0) l.push(p.extraWeapon); if (p.arnoldUntil > gameTime) l.push(4); if (p.fallen) l.push(6); return l; } // 기관총(아놀드)도 숫자키 5로 전환
 function switchWeapon(i) {
   const p = player; if (!p || !p.alive || i === p.weapon || !ownedWeapons(p).includes(i)) return;
   p.weapon = i; zoomActive = false; tone(700, 900, 0.05, 'square', 0.04);
@@ -4104,8 +4210,8 @@ function sendChat(txt) {
   const now = performance.now(); if (now - chatSendT < 600 || !player) return; chatSendT = now;
   txt = txt.slice(0, 80);
   const col = '#' + (player.color & 0xffffff).toString(16).padStart(6, '0');
-  addChat(player.name, col, txt, false);
-  if (NET.on) netSend({ t: 'chat', n: player.name, c: col, m: txt });
+  addChat(dispName(player), col, txt, false);
+  if (NET.on) netSend({ t: 'chat', n: dispName(player), c: col, m: txt });
 }
 $('chatInput').addEventListener('keydown', e => {
   e.stopPropagation();
@@ -4204,10 +4310,10 @@ let meteorV = 0, meteorApplied = 0, meteorFlash = 0, meteorFF = false;
 const _redC = new THREE.Color(0x7a1a0c), METEOR_T = 5, METEOR_CORE = 10, METEOR_MAX = 70;
 // 메테오 / 가미카제: 게임당 한 사람이 각각 3번까지. 온라인에서는 방 id + 방 시드로 저장해 나갔다 같은 방에 다시 들어와도 유지됨 (방이 비어 새 시드가 되면 초기화)
 const CHEAT_MAX = 3;
-let cheatCnt = { met: 0, kmk: 0 }, cheatKey = '';
+let cheatCnt = { met: 0, kmk: 0, fallen: 0 }, cheatKey = '';
 function cheatLoad(key) {
-  cheatKey = key; cheatCnt = { met: 0, kmk: 0 };
-  if (key) { try { const o = JSON.parse(localStorage.getItem(key) || 'null'); if (o) cheatCnt = { met: o.met | 0, kmk: o.kmk | 0 }; } catch (e) {} }
+  cheatKey = key; cheatCnt = { met: 0, kmk: 0, fallen: 0 };
+  if (key) { try { const o = JSON.parse(localStorage.getItem(key) || 'null'); if (o) cheatCnt = { met: o.met | 0, kmk: o.kmk | 0, fallen: o.fallen | 0 }; } catch (e) {} }
 }
 function cheatUse(k) {
   if (cheatCnt[k] >= CHEAT_MAX) return false;
@@ -4549,7 +4655,7 @@ function netRemoveFighter(f) {
 
 // ---- 상태 송수신
 function netSnap() {
-  const ent = f => [f.netId, f.name, f.color, r2(f.pos.x), r2(f.pos.y), r2(f.pos.z), r2(f.yaw), r2(f.pitch), r2(f.hp), f.maxHp, f.alive ? 1 : 0, f.weapon, f.arcOn ? 1 : 0, f.kills, f.deaths, f.team || '', f.keys, f.crowns.join(','), f.totalKills || 0];
+  const ent = f => [f.netId, f.name, f.color, r2(f.pos.x), r2(f.pos.y), r2(f.pos.z), r2(f.yaw), r2(f.pitch), r2(f.hp), f.maxHp, f.alive ? 1 : 0, f.weapon, f.arcOn ? 1 : 0, f.kills, f.deaths, f.team || '', f.keys, f.crowns.join(','), f.totalKills || 0, f.fallen ? 1 : 0];
   const d = { t: 's', f: [ent(player)] };
   if (NET.isHost) {
     for (const f of fighters) if (!f.isPlayer && !f.remote) d.f.push(ent(f));
@@ -4575,6 +4681,7 @@ function netApplyFighter(from, e) {
   f.kills = e[13]; f.deaths = e[14]; f.keys = e[16]; f.totalKills = e[18] || 0;
   f.crowns = e[17] ? e[17].split(',') : [];
   f.team = e[15] || null;
+  if (!!e[19] !== f.fallen) { f.fallen = !!e[19]; f.label.last = -1; }
   if (e[2] !== f.color) { f.color = e[2]; f.bodyMat.color.setHex(f.color); f.label.last = -1; }
 }
 function netApplyBear(from, e) {
@@ -4667,11 +4774,12 @@ function netOnData(from, d) {
     }
     case 'mx': { const m = mines[d.i]; if (m && !m.done) explodeMine(m, true); break; }
     case 'esc': { const f = findNet(d.w); if (f && f.remote) escapeMansion(f); break; }
-    case 'chat': addChat(String(d.n || '?').slice(0, 10), /^#[0-9a-f]{6}$/i.test(d.c) ? d.c : '#ffffff', String(d.m || '').slice(0, 80), !!d.b); break;
+    case 'chat': addChat(String(d.n || '?').slice(0, 40), /^#[0-9a-f]{6}$/i.test(d.c) ? d.c : '#ffffff', String(d.m || '').slice(0, 80), !!d.b); break;
     case 'met': startMeteor(d.x, d.y, d.z, false); break;
     case 'arm': if (currentMapId === 'arena' && !coopMode && d.w >= 0 && d.w < 4) spawnArmory(d.w | 0); break;
     case 'armt': { const a = armory; removeArmory(); if (a && a.w < 4 && currentMapId === 'arena' && !coopMode && !atarget) spawnTarget(a.w % 2); break; }
     case 'tgh': targetHit(false); break;
+    case 'rl': { const o = findNet(d.o), p = V3(...d.p); if (o) { d.ds.forEach((v, i) => spawnRocket(o, p.clone(), V3(...v), d.tt[i] ? findNet(d.tt[i]) : null, 'launcher')); weaponSound('launcher', volAt(p) * 0.7, p); flashLight(p, 0xff5533, 3, 8, 0.1); } break; }
     case 'rk': { const o = findNet(d.o), p = V3(...d.p); if (o) { spawnRocket(o, p, V3(...d.d), d.tt ? findNet(d.tt) : null); weaponSound('bazooka', volAt(p) * 0.7, p); flashLight(p, 0xff9933, 3, 8, 0.1); } break; }
     case 'yz': { const a = V3(...d.a), b = V3(...d.b), c = V3(...d.c); yozaStreak(a, b); tone(2400, 160, 0.2, 'sawtooth', 0.08); setTimeout(() => yozaSlash(c), 200); break; }
     case 'kmk': startKamikaze(d.x, d.y, d.z, d.tid, false, d.sx, d.sy, d.sz, null); break;
@@ -4719,7 +4827,7 @@ function startNetGame(info) {
   cheatLoad('laserCheat:' + info.id + ':' + info.seed); // 같은 방(같은 시드)에 다시 들어오면 사용 횟수 유지
   NET.info = info; NET.hostId = info.host; NET.isHost = info.host === NET.id; NET.botSeq = 0; NET.acc = 0; NET.dmgAcc.clear();
   player = new Fighter(pname, teamsMode ? TEAM_COLORS.red : 0x44ddff, true);
-  player.netId = 'p' + NET.id; player.owner = NET.id; player.weapon = selectedWeapon;
+  player.netId = 'p' + NET.id; player.owner = NET.id; player.weapon = selectedWeapon; player.fallen = !!cheatCnt.fallen; // 같은 방에 다시 들어와도 The Fallen 유지
   fighters.push(player);
   respawn(player);
   NET.on = true;
@@ -4804,7 +4912,7 @@ function update(dt) {
   for (const f of fighters) if (!f.isPlayer && !f.remote) updateBot(f, dt);
   for (const f of fighters) {
     if (f.remote) netInterp(f, dt);
-    for (let i = 0; i < 6; i++) f.cds[i] = Math.max(0, f.cds[i] - dt);
+    for (let i = 0; i < 7; i++) f.cds[i] = Math.max(0, f.cds[i] - dt);
     if (!f.grenadeActive) f.grenadeCD = Math.max(0, f.grenadeCD - dt);
     f.shieldCD = Math.max(0, f.shieldCD - dt);
     f.padCD = Math.max(0, f.padCD - dt);
@@ -4813,7 +4921,8 @@ function update(dt) {
     else f.regenT = 0;
     if (f.alive && (f.remote ? gameTime < f.arcUntil : f.arcFiring) && WEAPONS[f.weapon].continuous) updateArc(f, dt); else removeArc(f);
     f.arcOn = f.arcFiring; f.arcFiring = false;
-    if (!f.remote && f.alive && f.pos.y < -30) { if (f.rambo || performance.now() < f.invulnUntil) respawn(f); else kill(f, f, '추락'); } // 무적 중 추락하면 죽지 않고 안전한 곳으로
+    if (f.isPlayer && f.alive && f.pos.y < -30) voidReturn(f); // 공허로 떨어지다 지상으로 돌려보내짐 → The Fallen (소지품 유지)
+    else if (!f.remote && f.alive && f.pos.y < -30) { if (f.rambo || performance.now() < f.invulnUntil) respawn(f); else kill(f, f, '추락'); } // 무적 중 추락하면 죽지 않고 안전한 곳으로
     if (!f.isPlayer) updateBotMesh(f, dt);
   }
   updateGrenades(dt); updateRockets(dt);
