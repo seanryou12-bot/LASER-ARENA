@@ -225,6 +225,7 @@
   <div class="box panel">
     <h1>LASER ARENA</h1>
     <div class="sub" id="menuSub">레이저 FPS · 봇과의 개인전</div>
+    <div id="buildTag" style="font-size:11px;opacity:.45;margin-top:2px">build 11-19c</div>
     <div class="controls" id="menuControls" style="display:none">
       <b>W A S D</b><span>이동 (Shift: 스프린트 +30%)</span>
       <b>Space</b><span>점프</span>
@@ -1876,7 +1877,7 @@ function applyKill(t, src, wname) {
   if (!isCheatKill(wname)) addFeed(src === t ? `${tname} 자폭 [${wname}]` : `${sname}  [${wname}]  ▶  ${tname}`, (src && src.isPlayer) || t.isPlayer);
   if (t.isPlayer) {
     deathStamp = performance.now();
-    t.killedBy = isCheatKill(wname) ? '사망' : src === t ? '자신의 수류탄에 당했습니다' : `${sname}에게 처치됨 [${wname}]`;
+    t.killedBy = isCheatKill(wname) ? '사망' : src === t ? (wname === '추락' ? '추락했습니다' : '자신의 수류탄에 당했습니다') : `${sname}에게 처치됨 [${wname}]`;
     t.killerRef = (src && src !== t) ? src : null;
     zoomActive = false; tone(300, 60, 0.6, 'sawtooth', 0.15);
   }
