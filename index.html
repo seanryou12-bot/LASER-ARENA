@@ -278,7 +278,7 @@
         <label>이름<input id="optName" class="nameIn" maxlength="10" placeholder="플레이어 이름" autocomplete="off"></label>
         <label>모드<select id="optMode"><option value="ffa" selected>FFA</option><option value="teams">2Teams</option><option value="coop">Co-op (좀비)</option></select></label>
         <label>맵<select id="optMap"><option value="city" disabled>폐허 도시 (Co-op 전용)</option><option value="arena" selected>기본 아레나</option><option value="factory">버려진 공장</option><option value="forest">숲 (곰 출몰)</option><option value="mansion">저택 (탈출)</option></select></label>
-        <label>봇 수<select id="optBots"><option>0</option><option>1</option><option>2</option><option>3</option><option selected>5</option><option>7</option></select></label>
+        <label>봇 수<select id="optBots" title="더블클릭하면 직접 입력 (0~30)"><option>0</option><option>1</option><option>2</option><option>3</option><option selected>5</option><option>7</option><option>10</option><option>15</option></select></label>
         <label>선승제<select id="optKills"><option value="0">사용 안 함</option><option value="5">5킬</option><option value="10">10킬</option><option value="15">15킬</option><option value="20" selected>20킬</option><option value="30">30킬</option><option value="50">50킬</option></select></label>
         <label>난이도<select id="optDiff"><option value="0">쉬움</option><option value="1" selected>보통</option><option value="2">어려움</option></select></label>
         <label>조작<select id="optCtrl"><option value="auto" selected>자동</option><option value="pc">PC (마우스)</option><option value="mobile">모바일 (터치)</option></select></label>
@@ -1784,8 +1784,10 @@ function assignTeam(f) {
   if (f.bodyMat) { f.bodyMat.color.setHex(f.color); f.label.last = -1; }
   if (f.isPlayer && f.deaths > 0) { addFeed(`${f.name} → ${TEAM_NAMES[t]} 팀 배치`, true); $('centermsg').innerHTML = `당신은 <span style="color:${t === 'red' ? '#ff7b7b' : '#7ba8ff'}">${TEAM_NAMES[t]} 팀</span>으로 배치`; setTimeout(() => { if ($('centermsg').textContent.startsWith('당신은')) $('centermsg').textContent = ''; }, 2500); }
 }
-const BOT_NAMES = ['알파', '브라보', '찰리', '델타', '에코', '폭스트롯', '골프'];
-const BOT_COLORS = [0xe74c3c, 0xf1c40f, 0x2ecc71, 0x9b59b6, 0xe67e22, 0x1abc9c, 0xec407a];
+const BOT_NAMES = ['알파', '브라보', '찰리', '델타', '에코', '폭스트롯', '골프', '호텔', '인디아', '줄리엣', '킬로', '리마', '마이크', '노벰버', '오스카'];
+const BOT_COLORS = [0xe74c3c, 0xf1c40f, 0x2ecc71, 0x9b59b6, 0xe67e22, 0x1abc9c, 0xec407a, 0x3498db, 0xa3e635, 0xf97316, 0x14b8a6, 0xd946ef, 0x84cc16, 0xfb7185, 0x38bdf8];
+const botName = i => BOT_NAMES[i] || ('봇' + (i + 1)); // 목록보다 많으면 번호로
+const botColor = i => { if (BOT_COLORS[i] !== undefined) return BOT_COLORS[i]; const c = new THREE.Color(); c.setHSL(((i * 0.618) % 1), 0.7, 0.55); return c.getHex(); };
 const fighters = [];
 let player = null;
 
@@ -2997,7 +2999,7 @@ function startGame() {
   player = new Fighter(pname, teamsMode ? TEAM_COLORS.red : 0x44ddff, true); player.rambo = ($('optName').value || '').indexOf('\u00A0') >= 0; // 이름에 NBSP(Alt+0160)가 있으면 들어가자마자 람보 자동 발동
   player.weapon = selectedWeapon;
   fighters.push(player);
-  for (let i = 0; i < settings.bots; i++) { const b = new Fighter(BOT_NAMES[i], BOT_COLORS[i], false); buildBotMesh(b); fighters.push(b); }
+  for (let i = 0; i < settings.bots; i++) { const b = new Fighter(botName(i), botColor(i), false); buildBotMesh(b); fighters.push(b); }
   for (const f of fighters) respawn(f);
   if (currentMapId === 'forest') spawnBears(Math.max(1, Math.floor((settings.bots + 1) / 2))); // 곰 수 = 플레이어 수의 절반
   gameTime = 0; $('killfeed').innerHTML = ''; $('centermsg').textContent = ''; if (coopMode) coopIntro(); chatHist.length = 0; renderChat(); botGreet();
@@ -3074,6 +3076,31 @@ $('startBtn').onclick = () => {
 };
 $('leaveBtn').onclick = () => { returnToMenu(); };
 let prevMap = 'arena';
+// 봇 수: 칸(또는 이름표)을 더블클릭하면 숫자를 직접 입력할 수 있음 (0~30)
+(function () {
+  const sel = $('optBots'), inp = document.createElement('input');
+  inp.type = 'number'; inp.min = 0; inp.max = 30; inp.step = 1; inp.className = 'nameIn'; inp.style.cssText = 'width:64px;display:none'; inp.setAttribute('aria-label', '봇 수 직접 입력');
+  sel.parentNode.insertBefore(inp, sel.nextSibling);
+  let open = false;
+  const show = () => { if (open) return; open = true; inp.value = sel.value; sel.style.display = 'none'; inp.style.display = ''; inp.focus(); inp.select(); };
+  const hide = commit => {
+    if (!open) return; open = false;
+    if (commit) {
+      const v = Math.max(0, Math.min(30, Math.round(+inp.value)));
+      if (inp.value !== '' && !isNaN(v)) {
+        if (![...sel.options].some(o => +o.value === v)) { // 없는 값이면 정렬된 위치에 옵션 추가
+          const o = document.createElement('option'); o.textContent = v; o.value = v;
+          const after = [...sel.options].find(x => +x.value > v); sel.insertBefore(o, after || null);
+        }
+        sel.value = String(v);
+      }
+    }
+    inp.style.display = 'none'; sel.style.display = '';
+  };
+  sel.addEventListener('dblclick', show); sel.parentNode.addEventListener('dblclick', e => { if (e.target !== inp) show(); });
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); hide(true); } else if (e.key === 'Escape') { e.preventDefault(); hide(false); } e.stopPropagation(); });
+  inp.addEventListener('blur', () => hide(true));
+})();
 $('optMode').onchange = () => {
   const c = $('optMode').value === 'coop';
   if (c) { if ($('optMap').value !== 'city') prevMap = $('optMap').value; $('optMap').value = 'city'; $('optBots').value = '0'; }
@@ -4917,7 +4944,7 @@ function netSyncBots() {
   while (mine.length > want) netRemoveFighter(mine.pop());
   while (mine.length < want) {
     const k = NET.botSeq++;
-    const b = new Fighter(BOT_NAMES[k % BOT_NAMES.length], BOT_COLORS[k % BOT_COLORS.length], false);
+    const b = new Fighter(botName(k), botColor(k), false);
     b.netId = 'b' + NET.id + '_' + k; b.owner = NET.id;
     buildBotMesh(b); fighters.push(b); respawn(b); mine.push(b);
   }
