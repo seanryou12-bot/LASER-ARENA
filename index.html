@@ -736,7 +736,9 @@ function buildUndergroundHalls() {
   { // 참호(x ±33~37)를 만나는 구간: 통로 바닥을 -5.5 까지 낮추고(경사로), 참호 바닥(-2.5) 밑으로 천장을 낮춰 참호와 완전히 분리
     const dip = sg => {
       const xr = (a, b) => sg > 0 ? [a, b] : [-b, -a], X = x => sg * x, z0 = sg > 0 ? -9 : 1, z1 = z0 + 8, zc = z0 + 4, D2 = -5.5;
-      addHole(...xr(27, 43), z0, z1, D2, [], [['x0', z0, z1], ['x1', z0, z1]], true); holes.unshift(holes.pop()); // 참호보다 먼저 판정되어야 바닥이 -5.5 로 인식됨
+      const [tg0, tg1] = xr(32.4, 37.6); // 참호 폭 구간: 이 구간의 옆벽은 참호 바닥 밑(천장 아래)까지만 세움 (참호를 가로지르는 벽판이 솟아 보이지 않게)
+      addHole(...xr(27, 43), z0, z1, D2, [], [['x0', z0, z1], ['x1', z0, z1], ['z0', tg0, tg1], ['z1', tg0, tg1]], true); holes.unshift(holes.pop()); // 참호보다 먼저 판정되어야 바닥이 -5.5 로 인식됨
+      for (const zw of [z0 - 0.2, z1 + 0.2]) addBox((tg0 + tg1) / 2, zw, tg1 - tg0, 0.4, D2, 2.57, 0, C_DARK); // 통로 옆벽 (-5.5 ~ -2.93)
       addRamp(X(31.5), zc, X(27), zc, 8, D2, DEP, D2, C_DARK); addRamp(X(38.5), zc, X(43), zc, 8, D2, DEP, D2, C_DARK);
       ROOF(...xr(27, 33), z0, z1); ROOF(...xr(37, 43), z0, z1);                         // 일반 높이 천장
       const bx = (a, b, y0, h, col) => addBox((xr(a, b)[0] + xr(a, b)[1]) / 2, zc, b - a, 8, y0, h, 0, col);
