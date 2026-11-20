@@ -106,7 +106,12 @@
   .wcard svg { width: 100px; height: 50px; }
   .wcard .wname { font-weight: 800; font-size: 15px; color: #fff; margin-top: 2px; }
   .wcard .wdesc { font-size: 10.5px; opacity: .65; color: #fff; line-height: 1.35; margin-top: 4px; }
-  .overlay .box { max-height: 94vh; overflow-y: auto; }
+  .overlay .box { max-height: 94vh; overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none; } /* 시작 화면 전체에는 스크롤바를 보이지 않게 (휠/터치 스크롤은 그대로) */
+  .overlay .box::-webkit-scrollbar { display: none; width: 0; height: 0; }
+  #netRooms { max-height: 118px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.35) transparent; padding-right: 4px; } /* 공용방 목록만 따로 스크롤 */
+  #netRooms::-webkit-scrollbar { width: 6px; }
+  #netRooms::-webkit-scrollbar-thumb { background: rgba(255,255,255,.3); border-radius: 3px; }
+  #netRooms::-webkit-scrollbar-track { background: transparent; }
   /* 좁은 화면(미리보기 포함)에서 HUD가 겹치지 않도록 재배치 */
   @media (max-width: 1100px) {
     #weapons { bottom: 100px; right: 16px; }
@@ -324,6 +329,8 @@ const wrapA = a => { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) 
 const V3 = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const UP = V3(0, 1, 0);
 const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// 이름 저장: NBSP(Alt+0160)가 들어 있으면 앞뒤 공백 제거 전의 원본 그대로 저장해 다음 접속에도 유지
+function saveNameVal(pname) { var raw = (document.getElementById('optName').value || '').slice(0, 10); return raw.indexOf(String.fromCharCode(160)) >= 0 ? raw : (pname === '당신' ? '' : pname); }
 try { const sv = localStorage.getItem('laserName'); if (sv) document.getElementById('optName').value = sv; } catch (e) {}
 
 // 물리 상수
@@ -712,32 +719,45 @@ function buildTwoTierTower(tx, tz) {
 
 // 중앙 타워 지하 홀(허브) ─ 서쪽/동쪽 넓은 지하 통로 ─ 각 통로 끝의 피라미드 지하 방(작은 문으로 연결)
 // 그리고 각 통로에서 갈라져 아레나 구석의 2단 탑 아래 방(공중부양 구간)으로 가는 지선. 모두 바닥 깊이 -3, 천장 윗면 -0.03
-// 입구: 중앙 타워 1층 가운데의 아래로 내려가는 계단(빛나는 테두리로 눈에 띄게 표시)
+// 입구: 중앙 타워 1층 북동쪽 구석의 단순한 구멍(빛나는 테두리로 눈에 띄게 표시). 뛰어내려 들어가고, 지하에서는 피라미드 입구나 공중부양 구간으로 나옴
 function buildUndergroundHalls() {
   const DEP = -3.0, RY = -0.43, RH = 0.4;
   const ROOF = (x0, x1, z0, z1) => addBox((x0 + x1) / 2, (z0 + z1) / 2, x1 - x0, z1 - z0, RY, RH, 0, C_FLOOR);
   const hole = (x0, x1, z0, z1, gaps) => addHole(x0, x1, z0, z1, DEP, [], gaps, true);
   // 허브 / 서쪽 통로 / 동쪽 통로 (이웃과 맞닿는 변은 벽을 비워 서로 통하게 함, 0.2m 겹침)
   hole(-12, 12, -9, 9, [['x0', 1, 9], ['x1', -9, -1]]);
-  hole(-56.3, -11.8, 1, 9, [['x0', 1, 9], ['x1', 1, 9], ['z1', -56, -50]]);
-  hole(11.8, 56.3, -9, -1, [['x0', -9, -1], ['x1', -9, -1], ['z0', 50, 56]]);
-  // 천장: 허브는 타워 1층 가운데에 아래로 내려가는 계단 구멍(x -1.5~1.5, z -4.5~1.6)을 남김
-  ROOF(-12, -1.5, -9, 9); ROOF(1.5, 12, -9, 9); ROOF(-1.5, 1.5, -9, -4.5); ROOF(-1.5, 1.5, 1.6, 9);
-  ROOF(-56.1, -12, 1, 9); ROOF(12, 56.1, -9, -1);
-  floorCuts.push([-1.5, 1.5, -4.5, 1.6]); // 바닥 메쉬에도 같은 구멍
-  addRamp(0, 1.6, 0, -4.5, 3, DEP, 0, DEP, C_DARK); // 타워 1층(높이 0) → 지하 홀(-3)
+  hole(-56.3, -42.8, 1, 9, [['x0', 1, 9], ['x1', 1, 9], ['z1', -56, -50]]); // 서쪽 통로 (참호 구간 앞)
+  hole(-27.2, -11.8, 1, 9, [['x0', 1, 9], ['x1', 1, 9]]);                  // 서쪽 통로 (참호 구간 뒤)
+  hole(11.8, 27.2, -9, -1, [['x0', -9, -1], ['x1', -9, -1]]);              // 동쪽 통로 (참호 구간 앞)
+  hole(42.8, 56.3, -9, -1, [['x0', -9, -1], ['x1', -9, -1], ['z0', 50, 56]]); // 동쪽 통로 (참호 구간 뒤)
+  // 천장: 허브는 타워 1층 북동쪽 구석에 지하로 떨어지는 단순한 구멍(x 5.5~7.7, z 5.5~7.7)만 남김 (경사로 없음)
+  ROOF(-12, 5.5, -9, 9); ROOF(7.7, 12, -9, 9); ROOF(5.5, 7.7, -9, 5.5); ROOF(5.5, 7.7, 7.7, 9);
+  ROOF(-56.1, -43, 1, 9); ROOF(-27, -12, 1, 9); ROOF(12, 27, -9, -1); ROOF(43, 56.1, -9, -1);
+  { // 참호(x ±33~37)를 만나는 구간: 통로 바닥을 -5.5 까지 낮추고(경사로), 참호 바닥(-2.5) 밑으로 천장을 낮춰 참호와 완전히 분리
+    const dip = sg => {
+      const xr = (a, b) => sg > 0 ? [a, b] : [-b, -a], X = x => sg * x, z0 = sg > 0 ? -9 : 1, z1 = z0 + 8, zc = z0 + 4, D2 = -5.5;
+      addHole(...xr(27, 43), z0, z1, D2, [], [['x0', z0, z1], ['x1', z0, z1]], true); holes.unshift(holes.pop()); // 참호보다 먼저 판정되어야 바닥이 -5.5 로 인식됨
+      addRamp(X(31.5), zc, X(27), zc, 8, D2, DEP, D2, C_DARK); addRamp(X(38.5), zc, X(43), zc, 8, D2, DEP, D2, C_DARK);
+      ROOF(...xr(27, 33), z0, z1); ROOF(...xr(37, 43), z0, z1);                         // 일반 높이 천장
+      const bx = (a, b, y0, h, col) => addBox((xr(a, b)[0] + xr(a, b)[1]) / 2, zc, b - a, 8, y0, h, 0, col);
+      bx(32.4, 37.6, -2.93, 0.4, C_FLOOR);                                               // 참호 바닥 역할을 하는 낮은 천장 (윗면 -2.53)
+      bx(32.4, 33.0, -2.93, 2.5, C_DARK); bx(37.0, 37.6, -2.93, 2.5, C_DARK);            // 천장이 낮아지는 단의 벽 (참호 옆면을 막음)
+    };
+    dip(1); dip(-1);
+  }
+  floorCuts.push([5.5, 7.7, 5.5, 7.7]); // 바닥 메쉬에도 같은 구멍
   { // 입구 테두리: 눈에 띄는 발광 띠
     const fm = new THREE.MeshBasicMaterial({ color: 0x66e0ff });
     const strip = (x, z, w, d) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.1, d), fm); m.position.set(x, 0.05, z); scene.add(m); };
-    strip(-1.65, -1.45, 0.15, 6.3); strip(1.65, -1.45, 0.15, 6.3); strip(0, 1.75, 3.45, 0.15); strip(0, -4.65, 3.45, 0.15);
+    strip(5.4, 6.6, 0.15, 2.5); strip(7.8, 6.6, 0.15, 2.5); strip(6.6, 5.4, 2.45, 0.15); strip(6.6, 7.8, 2.45, 0.15);
   }
   // 기둥 (통로 가장자리, 지선 입구·참호 아래 구간은 건너뜀)
   const pil = (x, z) => addBox(x, z, 1.2, 1.2, DEP, -DEP - 0.43, 0, C_DARK);
-  for (const [x, z] of [[-8, -7], [-8, 7], [8, -7], [8, 7]]) pil(x, z);
-  for (const x of [-46, -42, -26, -18]) { pil(x, 2.2); pil(x, 7.8); }
-  for (const x of [18, 26, 42, 46]) { pil(x, -7.8); pil(x, -2.2); }
+  for (const [x, z] of [[-8, -7], [-8, 7], [8, -7]]) pil(x, z); // (8, 7) 은 입구 구멍 아래라 생략
+  for (const x of [-46, -26, -18]) { pil(x, 2.2); pil(x, 7.8); }
+  for (const x of [18, 26, 46]) { pil(x, -7.8); pil(x, -2.2); }
   // 조명
-  for (const [x, z] of [[0, 0], [-34, 5], [34, -5]]) { const l = new THREE.PointLight(0xbfd8ff, 1.0, 30, 2); l.position.set(x, DEP + 1.4, z); scene.add(l); }
+  for (const [x, z, y] of [[0, 0, DEP + 1.4], [-34, 5, -4.2], [34, -5, -4.2]]) { const l = new THREE.PointLight(0xbfd8ff, 1.0, 30, 2); l.position.set(x, y, z); scene.add(l); }
   // 각 통로의 지선: 서쪽 통로 → (-55, 55) 탑 아래 / 동쪽 통로 → (55, -55) 탑 아래
   for (const sg of [1, -1]) {
     const tx = 55 * sg, tz = -55 * sg, mir = (p, q) => sg > 0 ? [p, q] : [-q, -p];
@@ -1874,7 +1894,7 @@ function updateBotMesh(b, dt) {
   if (!b.alive) return;
   const xr = !!(player && player.alive && hasCrown(player, 'xray'));
   b.ghost.visible = xr;
-  b.label.sp.visible = xr || !(b.pos.y < -0.8 && !(player && player.pos.y < -0.8)); // 지하에 있는 플레이어의 이름표는 엑스레이가 아니면 지상에서 숨김
+  b.label.sp.visible = true; // 이름표는 항상 표시. 다만 머리 위에 천장/지붕이 있으면 이름표가 그 위(지상)로 삐져나오지 않게 아래에서 눌러 줌 (엑스레이 중에는 그대로 투시)
   b.label.sp.material.depthTest = !xr; b.label.sp.renderOrder = xr ? 1001 : 0;
   const ck = b.crowns.join(',');
   if (b.crownShown !== ck) { // 머리 위 왕관 표시 (여러 개면 쌓임)
@@ -1884,6 +1904,12 @@ function updateBotMesh(b, dt) {
     b.crownMesh.position.y = 1.88; b.crownMesh.scale.setScalar(0.8); b.mesh.add(b.crownMesh);
     b.label.sp.position.y = 2.4 + 0.22 * b.crowns.length;
     b.crownShown = ck;
+  }
+  { // 이름표 높이: 머리 위 천장 바로 아래까지만 (지하에 있을 때 이름표가 땅 위로 삐져나오지 않게)
+    const want = 2.4 + 0.22 * b.crowns.length, cl = ceilR(b.pos.x, b.pos.z, b.pos.y);
+    let ly = (!xr && isFinite(cl)) ? Math.min(want, Math.max(2.0, cl - b.pos.y - 0.35)) : want;
+    if (!xr && b.pos.y < -0.5) ly = Math.min(ly, Math.max(2.0, -0.3 - b.pos.y)); // 지하(열린 참호 포함)에서는 이름표가 지면 위로 올라오지 않게
+    b.label.sp.position.y = ly;
   }
   b.mesh.position.copy(b.pos);
   b.mesh.rotation.y = b.yaw;
@@ -2966,7 +2992,7 @@ function startGame() {
   spawnMapPads();
   spawnCrowns();
   const pname = ($('optName').value || '').trim().slice(0, 10) || '당신';
-  try { localStorage.setItem('laserName', pname === '당신' ? '' : pname); } catch (e) {}
+  try { localStorage.setItem('laserName', saveNameVal(pname)); } catch (e) {}
   teamsMode = $('optMode').value === 'teams'; teamScore.red = 0; teamScore.blue = 0;
   player = new Fighter(pname, teamsMode ? TEAM_COLORS.red : 0x44ddff, true); player.rambo = ($('optName').value || '').indexOf('\u00A0') >= 0; // 이름에 NBSP(Alt+0160)가 있으면 들어가자마자 람보 자동 발동
   player.weapon = selectedWeapon;
@@ -4914,7 +4940,7 @@ function startNetGame(info) {
   coopMode = info.mode === 'coop'; coopT = 0; coopKills = 0; Z.inited = false; Z.seq = 0; document.body.classList.toggle('coop', coopMode);
   withSeed(info.seed, () => { loadMap(info.map); spawnMapPads(); spawnCrowns(); });
   const pname = netPname();
-  try { localStorage.setItem('laserName', pname === '당신' ? '' : pname); } catch (e) {}
+  try { localStorage.setItem('laserName', saveNameVal(pname)); } catch (e) {}
   teamsMode = info.mode === 'teams'; teamScore.red = 0; teamScore.blue = 0; killLimit = (!info.priv && info.map !== 'mansion' && info.mode !== 'coop') ? 0 : KILL_LIMIT; // 공용방(저택·폐허 도시 제외)은 선승제 없음, 개인방은 20킬 선취
   cheatLoad('laserCheat:' + info.id + ':' + info.seed); // 같은 방(같은 시드)에 다시 들어오면 사용 횟수 유지
   NET.info = info; NET.hostId = info.host; NET.isHost = info.host === NET.id; NET.botSeq = 0; NET.acc = 0; NET.dmgAcc.clear();
