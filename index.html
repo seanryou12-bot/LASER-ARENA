@@ -440,6 +440,8 @@ const solids = [];     // {x,z,c,s,hw,hd,bottom,top(lx,lz),br2}
 const hitMeshes = [];  // 레이저/시야 판정용 메쉬
 const craters = [];    // 메테오 분화구 {x,z,r,depth,...}
 const holes = [];      // 바닥에 파인 구덩이 {x0,x1,z0,z1,depth,exits}
+const floorCuts = [];  // 바닥 메쉬에만 뚫는 구멍 [x0,x1,z0,z1] (물리 없음: 지붕이 있는 지하 구조의 출입구)
+const LEVI = [];       // 공중부양 구간 {x,z,hs,y0,y1}: 안에 있으면 서서히 위로 올라감
 let ARENA = 80;
 const C_FLOOR = 0x8d9197, C_STRUCT = 0x9fa3a9, C_DARK = 0x7a7e84, C_LIGHT = 0xb4b8be;
 
@@ -488,7 +490,7 @@ function addPyramid(x, z, size, h, base = 0, color = C_STRUCT) {
   const hs = size / 2;
   const ps = addSolid(m, { x, z, rot: 0, hw: hs, hd: hs, bottom: base, top: (lx, lz) => base + h * (1 - Math.max(Math.abs(lx), Math.abs(lz)) / hs) }); ps.slide = true; return ps;
 }
-function addHole(x0, x1, z0, z1, depth, exits, gaps) { holes.push({ x0, x1, z0, z1, depth, exits, gaps: gaps || [] }); } // gaps: [['x0'|'x1'|'z0'|'z1', lo, hi]] 그 변의 lo~hi 구간은 벽을 만들지 않음(옆 방과 통함)
+function addHole(x0, x1, z0, z1, depth, exits, gaps, nocut) { holes.push({ x0, x1, z0, z1, depth, exits, gaps: gaps || [], nocut: !!nocut }); } // nocut: 지붕으로 덮인 지하 구조 → 바닥 메쉬를 뚫지 않음(겹치는 구멍 때문에 땅에 금이 가 보이는 문제 방지) // gaps: [['x0'|'x1'|'z0'|'z1', lo, hi]] 그 변의 lo~hi 구간은 벽을 만들지 않음(옆 방과 통함)
 // 피라미드 비밀 통로: 벽 쪽 면(e 방향의 반대쪽)에서 피라미드를 뚫고 들어가면 아래로 내려가는 경사로 → 지하 방. 겉모습은 변하지 않음
 let PYR_SECRET = [];
 const carved = (s, lx, lz) => { for (const c of s.carve) if (lx >= c[0] && lx <= c[1] && lz >= c[2] && lz <= c[3]) return true; return false; };
@@ -496,10 +498,12 @@ function secretPyramid(ps, e) {
   const px = ps.x, pz = ps.z, X = u => px + e * u, DEP = -3.0;
   const box = (u0, u1, v0, v1, y0, h, col) => addBox(X((u0 + u1) / 2), pz + (v0 + v1) / 2, u1 - u0, v1 - v0, y0, h, 0, col);
   const a = e * -6.4, b = e * -1.5; ps.carve = [[Math.min(a, b), Math.max(a, b), -1.7, 1.7]]; // 피라미드 충돌에서 통로 부분만 비움 (보이는 모습은 그대로)
-  addHole(Math.min(X(-5.9), X(5.9)), Math.max(X(-5.9), X(5.9)), pz - 4, pz + 4, DEP, [], [[e > 0 ? 'x1' : 'x0', pz - 4, pz + 4]]); // 중앙 타워 쪽 벽은 지하 통로와 통함
+  addHole(Math.min(X(-5.9), X(5.9)), Math.max(X(-5.9), X(5.9)), pz - 4, pz + 4, DEP, [], [[e > 0 ? 'x1' : 'x0', pz - 4, pz + 4]], true); // 중앙 쪽 벽은 아래 box()로 직접 세움 (작은 문 하나만 뚫림)
   addRamp(X(-0.4), pz, X(-5.9), pz, 3, DEP, 0, DEP, C_DARK); // 바깥쪽(높이 0)에서 안쪽(깊이 3)으로 내려감
-  box(-5.9, -0.4, 1.5, 4, DEP, -DEP, C_DARK); box(-5.9, -0.4, -4, -1.5, DEP, -DEP, C_DARK); // 경사로 양옆 벽
-  box(-0.4, 5.9, -4, 4, -0.4, 0.4, C_STRUCT); // 지하 방 천장 (그 위가 피라미드) — 경사로가 끝나는 곳부터
+  box(-5.9, -0.4, 1.5, 4, DEP, -DEP - 0.03, C_DARK); box(-5.9, -0.4, -4, -1.5, DEP, -DEP - 0.03, C_DARK); // 경사로 양옆 벽
+  box(-0.4, 5.9, -4, 4, -0.43, 0.4, C_STRUCT);
+  // 넓은 지하 홀과 이어지는 작은 문: 방 안쪽(중앙 쪽) 벽에 폭 2m, 높이 1.9m 의 문 하나. 나머지는 벽
+  box(5.6, 6.2, -4, -3.2, DEP, -DEP - 0.03, C_DARK); box(5.6, 6.2, -1.2, 4, DEP, -DEP - 0.03, C_DARK); box(5.6, 6.2, -3.2, -1.2, -1.1, 1.07, C_DARK); // 지하 방 천장 (그 위가 피라미드) — 경사로가 끝나는 곳부터
   // 피라미드 안쪽에서 보이는 면: 겉면을 뒤집어 안에서도 벽으로 보이게 (겉에서는 그대로)
   const src = ps.mesh.geometry.attributes.position.array, pos = [];
   for (let t = 0; t < 4; t++) { const o = t * 9; pos.push(src[o], src[o + 1], src[o + 2], src[o + 6], src[o + 7], src[o + 8], src[o + 3], src[o + 4], src[o + 5]); }
@@ -507,7 +511,7 @@ function secretPyramid(ps, e) {
   const inner = new THREE.Mesh(g, ps.mesh.material); inner.position.copy(ps.mesh.position); inner.rotation.copy(ps.mesh.rotation);
   scene.add(inner); hitMeshes.push(inner);
   const l = new THREE.PointLight(0xbfd8ff, 1.1, 14, 2); l.position.set(X(2.2), DEP + 1.6, pz); scene.add(l);
-  return { e, px, pz, floor: DEP, tx: X(5.4), tz: pz };
+  return { e, px, pz, floor: DEP, tx: X(5.4), tz: pz + 2.2 }; // 과녁은 문과 떨어진 안쪽 벽 쪽
 }
 
 function buildFloor(fc = C_FLOOR) {
@@ -515,8 +519,14 @@ function buildFloor(fc = C_FLOOR) {
   const shape = new THREE.Shape();
   shape.moveTo(-A, -A); shape.lineTo(A, -A); shape.lineTo(A, A); shape.lineTo(-A, A); shape.lineTo(-A, -A);
   for (const h of holes) {
+    if (h.nocut) continue;
     const p = new THREE.Path();
     p.moveTo(h.x0, -h.z0); p.lineTo(h.x0, -h.z1); p.lineTo(h.x1, -h.z1); p.lineTo(h.x1, -h.z0); p.lineTo(h.x0, -h.z0);
+    shape.holes.push(p);
+  }
+  for (const [x0, x1, z0, z1] of floorCuts) {
+    const p = new THREE.Path();
+    p.moveTo(x0, -z0); p.lineTo(x0, -z1); p.lineTo(x1, -z1); p.lineTo(x1, -z0); p.lineTo(x0, -z0);
     shape.holes.push(p);
   }
   const g = new THREE.ShapeGeometry(shape); g.rotateX(-Math.PI / 2);
@@ -648,10 +658,7 @@ function buildArenaMap() {
   addBox(58.25, 51.3, 1.5, 0.6, 15, 1.2); addBox(51.75, 51.3, 1.5, 0.6, 15, 1.2);
   for (const [tx, tz] of [[55, -55], [-55, 55]]) {
     // 2단 계단식 탑: 단마다 높이 8 (점프패드 한 번으로 충분히 도달 가능, 1단 위에서 다시 패드 설치)
-    addBox(tx, tz, 7, 7, 0, 8, 0, C_DARK);
-    addBox(tx, tz, 4.6, 4.6, 8, 8, 0, C_DARK);
-    addBox(tx, tz - 2.1, 4.6, 0.6, 16, 1); addBox(tx, tz + 2.1, 4.6, 0.6, 16, 1);
-    addBox(tx - 2.1, tz, 0.6, 3.4, 16, 1); addBox(tx + 2.1, tz, 0.6, 3.4, 16, 1);
+    buildTwoTierTower(tx, tz);
   }
 
   // 다리 + 경사로 (아래로 통과 가능)
@@ -681,25 +688,68 @@ function buildArenaMap() {
   buildFloor();
 }
 
-// 중앙 타워 지하 홀(허브) ─ 서쪽/동쪽 넓은 지하 통로 ─ 두 피라미드의 지하 방. 모두 바닥 깊이 -3, 천장 -0.4 (지면과 같은 높이의 지붕 위로는 그냥 걸어 다님)
-// 입구: 중앙 타워 1층 가운데의 아래로 내려가는 경사로. 통로 폭 8m 의 넓은 방, 기둥과 조명 포함
+// 아레나 구석의 2단 탑 (직육면체 두 개): 더 넓게 만들어 점프패드 둘 공간을 확보하고, 가운데에 수직 통로를 뚫어
+// 지하 방의 '공중부양 구간'에서 서서히 떠올라 탑 꼭대기(높이 16)까지 올라올 수 있게 함
+const TW_S = 2.0; // 수직 통로 반폭 (몸 반지름 0.4 를 고려해 공중부양 구간은 1.5)
+function buildTwoTierTower(tx, tz) {
+  const ring = (outer, y0, h) => { // 가운데가 빈 사각 고리 (바깥 한 변 outer)
+    const half = outer / 2, w = half - TW_S, c = (half + TW_S) / 2;
+    addBox(tx, tz + c, outer, w, y0, h, 0, C_DARK); addBox(tx, tz - c, outer, w, y0, h, 0, C_DARK);
+    addBox(tx + c, tz, w, 2 * TW_S, y0, h, 0, C_DARK); addBox(tx - c, tz, w, 2 * TW_S, y0, h, 0, C_DARK);
+  };
+  ring(17, 0, 8);   // 1단: 17x17, 높이 8 (윗면 가장자리 폭 3m 에 점프패드를 놓을 수 있음)
+  ring(11, 8, 8);   // 2단: 11x11, 높이 16 (꼭대기)
+  const U = 11, t = 0.6; // 꼭대기 난간
+  addBox(tx, tz - U / 2 + t / 2, U, t, 16, 1); addBox(tx, tz + U / 2 - t / 2, U, t, 16, 1);
+  addBox(tx - U / 2 + t / 2, tz, t, U - 2 * t, 16, 1); addBox(tx + U / 2 - t / 2, tz, t, U - 2 * t, 16, 1);
+  LEVI.push({ x: tx, z: tz, hs: 1.5, y0: -3.6, y1: 16.9 });
+  // 공중부양 표시: 지하 바닥의 빛나는 원판 + 통로를 관통하는 희미한 빛기둥
+  const glow = new THREE.MeshBasicMaterial({ color: 0x66ddff }), beamM = new THREE.MeshBasicMaterial({ color: 0x66ddff, transparent: true, opacity: 0.13, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending });
+  const disc = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 0.06, 28), glow); disc.position.set(tx, -3 + 0.04, tz); scene.add(disc);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(1.5, 0.05, 6, 32), glow); rim.rotation.x = Math.PI / 2; rim.position.set(tx, -3 + 0.1, tz); scene.add(rim);
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(1.45, 1.45, 20, 20, 1, true), beamM); beam.position.set(tx, 7, tz); scene.add(beam);
+}
+
+// 중앙 타워 지하 홀(허브) ─ 서쪽/동쪽 넓은 지하 통로 ─ 각 통로 끝의 피라미드 지하 방(작은 문으로 연결)
+// 그리고 각 통로에서 갈라져 아레나 구석의 2단 탑 아래 방(공중부양 구간)으로 가는 지선. 모두 바닥 깊이 -3, 천장 윗면 -0.03
+// 입구: 중앙 타워 1층 가운데의 아래로 내려가는 계단(빛나는 테두리로 눈에 띄게 표시)
 function buildUndergroundHalls() {
-  const DEP = -3.0, ROOF = (x0, x1, z0, z1) => addBox((x0 + x1) / 2, (z0 + z1) / 2, x1 - x0, z1 - z0, -0.4, 0.4, 0, C_FLOOR);
-  // 구덩이(바닥): 허브 / 서쪽 통로 / 동쪽 통로. 이웃과 맞닿는 변은 벽을 비워 서로 통하게 함 (0.2m 겹침)
-  addHole(-12, 12, -9, 9, DEP, [], [['x0', 1, 9], ['x1', -9, -1]]);
-  addHole(-56.3, -11.8, 1, 9, DEP, [], [['x0', 1, 9], ['x1', 1, 9]]);
-  addHole(11.8, 56.3, -9, -1, DEP, [], [['x0', -9, -1], ['x1', -9, -1]]);
-  // 천장(지붕): 허브는 타워 1층 가운데에 아래로 내려가는 계단 구멍(x -1.5~1.5, z -4.5~1.6)을 남김
+  const DEP = -3.0, RY = -0.43, RH = 0.4;
+  const ROOF = (x0, x1, z0, z1) => addBox((x0 + x1) / 2, (z0 + z1) / 2, x1 - x0, z1 - z0, RY, RH, 0, C_FLOOR);
+  const hole = (x0, x1, z0, z1, gaps) => addHole(x0, x1, z0, z1, DEP, [], gaps, true);
+  // 허브 / 서쪽 통로 / 동쪽 통로 (이웃과 맞닿는 변은 벽을 비워 서로 통하게 함, 0.2m 겹침)
+  hole(-12, 12, -9, 9, [['x0', 1, 9], ['x1', -9, -1]]);
+  hole(-56.3, -11.8, 1, 9, [['x0', 1, 9], ['x1', 1, 9], ['z1', -56, -50]]);
+  hole(11.8, 56.3, -9, -1, [['x0', -9, -1], ['x1', -9, -1], ['z0', 50, 56]]);
+  // 천장: 허브는 타워 1층 가운데에 아래로 내려가는 계단 구멍(x -1.5~1.5, z -4.5~1.6)을 남김
   ROOF(-12, -1.5, -9, 9); ROOF(1.5, 12, -9, 9); ROOF(-1.5, 1.5, -9, -4.5); ROOF(-1.5, 1.5, 1.6, 9);
   ROOF(-56.1, -12, 1, 9); ROOF(12, 56.1, -9, -1);
+  floorCuts.push([-1.5, 1.5, -4.5, 1.6]); // 바닥 메쉬에도 같은 구멍
   addRamp(0, 1.6, 0, -4.5, 3, DEP, 0, DEP, C_DARK); // 타워 1층(높이 0) → 지하 홀(-3)
-  // 기둥 (통로 가장자리, 참호 아래 구간은 건너뜀)
-  const pil = (x, z) => addBox(x, z, 1.2, 1.2, DEP, -DEP - 0.4, 0, C_DARK);
+  { // 입구 테두리: 눈에 띄는 발광 띠
+    const fm = new THREE.MeshBasicMaterial({ color: 0x66e0ff });
+    const strip = (x, z, w, d) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, 0.1, d), fm); m.position.set(x, 0.05, z); scene.add(m); };
+    strip(-1.65, -1.45, 0.15, 6.3); strip(1.65, -1.45, 0.15, 6.3); strip(0, 1.75, 3.45, 0.15); strip(0, -4.65, 3.45, 0.15);
+  }
+  // 기둥 (통로 가장자리, 지선 입구·참호 아래 구간은 건너뜀)
+  const pil = (x, z) => addBox(x, z, 1.2, 1.2, DEP, -DEP - 0.43, 0, C_DARK);
   for (const [x, z] of [[-8, -7], [-8, 7], [8, -7], [8, 7]]) pil(x, z);
-  for (const x of [-50, -42, -26, -18]) { pil(x, 2.2); pil(x, 7.8); }
-  for (const x of [18, 26, 42, 50]) { pil(x, -7.8); pil(x, -2.2); }
+  for (const x of [-46, -42, -26, -18]) { pil(x, 2.2); pil(x, 7.8); }
+  for (const x of [18, 26, 42, 46]) { pil(x, -7.8); pil(x, -2.2); }
   // 조명
   for (const [x, z] of [[0, 0], [-34, 5], [34, -5]]) { const l = new THREE.PointLight(0xbfd8ff, 1.0, 30, 2); l.position.set(x, DEP + 1.4, z); scene.add(l); }
+  // 각 통로의 지선: 서쪽 통로 → (-55, 55) 탑 아래 / 동쪽 통로 → (55, -55) 탑 아래
+  for (const sg of [1, -1]) {
+    const tx = 55 * sg, tz = -55 * sg, mir = (p, q) => sg > 0 ? [p, q] : [-q, -p];
+    const [gx0, gx1] = mir(50, 56), [cz0, cz1] = mir(-49.7, -8.8);
+    hole(gx0, gx1, cz0, cz1, [['z0', gx0, gx1], ['z1', gx0, gx1]]); // 지선 통로 (폭 6m)
+    hole(tx - 5.5, tx + 5.5, tz - 5.5, tz + 5.5, [[sg > 0 ? 'z1' : 'z0', gx0, gx1]]); // 탑 아래 방 (11x11)
+    const [rz0, rz1] = mir(-49.5, -9); ROOF(gx0, gx1, rz0, rz1);
+    // 탑 아래 방 천장: 가운데에 수직 통로 구멍(공중부양 구간)을 남김
+    const q = TW_S;
+    ROOF(tx - 5.5, tx - q, tz - 5.5, tz + 5.5); ROOF(tx + q, tx + 5.5, tz - 5.5, tz + 5.5); ROOF(tx - q, tx + q, tz - 5.5, tz - q); ROOF(tx - q, tx + q, tz + q, tz + 5.5);
+    const l = new THREE.PointLight(0x66ddff, 1.1, 18, 2); l.position.set(tx, DEP + 1.5, tz); scene.add(l);
+  }
 }
 
 // ====================================================================
@@ -718,7 +768,7 @@ const conveyors = [], crateCols = [], crateAnims = [], allCrates = [];
 function clearMap() {
   for (const o of mapChildren) { scene.remove(o); o.traverse(n => { if (n.geometry) n.geometry.dispose(); }); }
   mapChildren = [];
-  solids.length = 0; hitMeshes.length = 0; holes.length = 0;
+  solids.length = 0; hitMeshes.length = 0; holes.length = 0; floorCuts.length = 0; LEVI.length = 0;
   conveyors.length = 0; crateCols.length = 0; crateAnims.length = 0; allCrates.length = 0; crateSeq = 0; crateById.clear();
   NAV = null; MNAV = null;
   for (const k of keyPickups) scene.remove(k.mesh);
@@ -1824,6 +1874,7 @@ function updateBotMesh(b, dt) {
   if (!b.alive) return;
   const xr = !!(player && player.alive && hasCrown(player, 'xray'));
   b.ghost.visible = xr;
+  b.label.sp.visible = xr || !(b.pos.y < -0.8 && !(player && player.pos.y < -0.8)); // 지하에 있는 플레이어의 이름표는 엑스레이가 아니면 지상에서 숨김
   b.label.sp.material.depthTest = !xr; b.label.sp.renderOrder = xr ? 1001 : 0;
   const ck = b.crowns.join(',');
   if (b.crownShown !== ck) { // 머리 위 왕관 표시 (여러 개면 쌓임)
@@ -2361,7 +2412,7 @@ let CROWN_SPOTS = [
   [6.3, 6.3, 6], [6.3, -6.3, 20], [6.3, 6.3, 28], [-6.3, 6.3, 34], // 중앙 탑 내부 경사로 쉼터
   [6, 0, 40], [-20, 0, 40],                            // 중앙 탑 지붕, 낮은 평지대
   [0, 16.5, 9], [-14, -16.5, 9],                       // 2층 데크
-  [-55, -55, 16], [55, 55, 16], [55, -55, 17], [-55, 55, 17], [20, 60, 21], // 탑 꼭대기
+  [-55, -55, 16], [55, 55, 16], [58.7, -55, 17], [-51.3, 55, 17], [20, 60, 21], // 탑 꼭대기
   [66, 66, 18],                                        // 북동 코너 탑
   [-10, -32, 4], [-15.5, -32, 8], [-28, -17.5, 8], [18, 34, 4], // 점프 블록 위
   [62, 20, 1], [-68, -20, 1], [0, -62, 1], [-50, 50, 1], // 외곽 바닥
@@ -2430,6 +2481,13 @@ function slopeAt(x, z, feet) {
   }
   return null;
 }
+function leviAt(f) {
+  for (const L of LEVI) {
+    const hs = f.pos.y > L.y1 - 1.4 ? L.hs + 0.5 : L.hs; // 꼭대기 부근에서는 범위를 조금 넓혀 구멍 가장자리에서도 안정적으로 머무름
+    if (Math.abs(f.pos.x - L.x) < hs && Math.abs(f.pos.z - L.z) < hs && f.pos.y > L.y0 && f.pos.y < L.y1 + 0.3) return L;
+  }
+  return null;
+}
 function moveFighter(f, vx, vz, dt) {
   if (f.onGround) {
     f.hv.set(vx, vz);
@@ -2446,7 +2504,9 @@ function moveFighter(f, vx, vz, dt) {
   const nz = p.z + f.hv.y * dt;
   if (stuck || !blockedR(p.x, nz, p.y, P_H)) p.z = nz; else f.hitWall = true;
   p.x = clamp(p.x, -ARENA + 0.5, ARENA - 0.5); p.z = clamp(p.z, -ARENA + 0.5, ARENA - 0.5);
-  f.vy -= G * dt;
+  const lev = LEVI.length ? leviAt(f) : null;
+  if (lev) { const tv = f.pos.y < lev.y1 ? 3.6 : 0; f.vy += (tv - f.vy) * Math.min(1, dt * 4); } // 공중부양 구간: 서서히 위로 (꼭대기에서는 떠 있음)
+  else f.vy -= G * dt;
   let ny = p.y + f.vy * dt;
   const g = groundR(p.x, p.z, p.y);
   if (f.vy > 0) { const c = ceilR(p.x, p.z, p.y); if (ny + P_H > c) { ny = Math.max(p.y, c - P_H); f.vy = 0; } }
