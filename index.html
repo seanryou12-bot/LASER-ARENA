@@ -1797,7 +1797,7 @@ class Fighter {
   constructor(name, color, isPlayer) {
     Object.assign(this, {
       name, color, isPlayer, pos: V3(), vy: 0, hv: new THREE.Vector2(), yaw: 0, pitch: 0, hp: 10, alive: true,
-      onGround: false, weapon: 0, cds: [0, 0, 0, 0, 0, 0, 0], fallen: false, arnoldUntil: 0, rambo: false, invulnUntil: 0, baseWeapon: 0, extraWeapon: -1, grenadeCD: 0, grenadeActive: false, shieldCD: 0, padCD: 0,
+      onGround: false, weapon: 0, cds: [0, 0, 0, 0, 0, 0, 0], fallen: false, arnoldUntil: 0, rambo: false, invulnUntil: 0, baseWeapon: 0, extraWeapon: -1, bazooka: false, grenadeCD: 0, grenadeActive: false, shieldCD: 0, padCD: 0,
       kills: 0, deaths: 0, respawnT: 0, arcFiring: false, arcMesh: null, arcGlow: null, arcSndT: 0, lastHit: -99,
       killedBy: '', killerRef: null, crowns: [], maxHp: 10, team: null, keys: 0, netId: null, remote: false, totalKills: 0, smokes: 0, dopeUntil: 0, owner: 0, arcUntil: 0, arcOn: false,
     });
@@ -2572,7 +2572,7 @@ function respawn(f) {
   }
   if (f.isPlayer && f.weapon >= 4) f.weapon = f.baseWeapon || 0; // 아놀드 기관총·바주카·런처를 들고 있던 채로 부활해도 원래 무기를 잃지 않게
   f.cheatUsed = {}; // 무기고 / 오마에모신데루 / 요자쿠라는 한 번 살 때마다 1번씩만
-  f.baseWeapon = f.weapon; f.extraWeapon = -1;
+  f.baseWeapon = f.weapon; f.extraWeapon = -1; f.bazooka = false;
   if (f.fallen && f.isPlayer) f.weapon = 6; // The Fallen: 부활해도 로켓 런처를 들고 시작 // 무기고로 얻은 두 번째 무기는 죽으면 사라짐
   // 플레이어의 weapon은 죽음→메뉴 화면에서 고른 값이 respawn() 호출 전에 이미 설정되어 있다.
 }
@@ -3255,7 +3255,11 @@ function createSmoke(c) {
     g.add(m); puffs.push(m);
   }
   scene.add(g);
-  smokes.push({ pos: c.clone(), t: 0, g, mat, puffs, fade: 1 });
+  // 천장이 있는 곳(지하 등)에서 터지면 연기가 천장 위로 번지지 않고, 지붕 덮인 지하 위(지상)에서 터지면 아래로 번지지 않게 상하 범위를 제한
+  const top = ceilR(c.x, c.z, c.y), capT = (isFinite(top) && top - c.y < 8) ? top - c.y : undefined;
+  const capB = c.y > -0.5 && holes.some(h => h.nocut && c.x > h.x0 && c.x < h.x1 && c.z > h.z0 && c.z < h.z1);
+  if (capT !== undefined) for (const m of puffs) m.position.y = Math.min(m.position.y, Math.max(0.2, capT - 0.35)); // 천장보다 높은 곳에 뭉치지 않게
+  smokes.push({ pos: c.clone(), t: 0, g, mat, puffs, fade: 1, capT, capB, y0: capB ? c.y - 0.9 : c.y - 3, y1: Math.min(c.y + 4.5, capT !== undefined ? top - 0.05 : Infinity) });
   noise(0.8, 0.22 * Math.max(0.2, volAt(c)), 3500, c);
 }
 function updateSmokes(dt) {
@@ -3264,7 +3268,13 @@ function updateSmokes(dt) {
     const grow = Math.min(1, s.t / 1.5);
     s.fade = s.t > SMOKE_LIFE - 4 ? Math.max(0, (SMOKE_LIFE - s.t) / 4) : 1;
     s.mat.opacity = 0.4 * s.fade;
-    for (const m of s.puffs) { const u = m.userData, k = u.s * grow * (0.95 + 0.05 * Math.sin(s.t * 1.3 + u.ph)); m.scale.setScalar(k); }
+    for (const m of s.puffs) {
+      const u = m.userData, k = u.s * grow * (0.95 + 0.05 * Math.sin(s.t * 1.3 + u.ph));
+      let sy = k; // 천장/바닥을 넘지 않게 세로 크기 제한
+      if (s.capT !== undefined) sy = Math.min(sy, s.capT - m.position.y - 0.05);
+      if (s.capB) sy = Math.min(sy, m.position.y + 0.9);
+      m.scale.set(k, Math.max(0.15, sy), k);
+    }
     if (s.t >= SMOKE_LIFE) { scene.remove(s.g); s.mat.dispose(); smokes.splice(i, 1); }
   }
 }
@@ -3272,7 +3282,7 @@ function smokeAt(pos) {
   let m = 0;
   for (const s of smokes) {
     const R = SMOKE_R * Math.min(1, s.t / 1.5), d = Math.hypot(pos.x - s.pos.x, pos.z - s.pos.z);
-    if (d < R && pos.y < s.pos.y + 4.5 && pos.y > s.pos.y - 3) m = Math.max(m, Math.min(1, (R - d) / 2.5) * s.fade);
+    if (d < R && pos.y < s.y1 && pos.y > s.y0) m = Math.max(m, Math.min(1, (R - d) / 2.5) * s.fade);
   }
   return m;
 }
@@ -4320,17 +4330,17 @@ function updateArmory(dt) {
   if (armory.h > 0) { armory.vh += 20 * dt; armory.h = Math.max(0, armory.h - armory.vh * dt); armory.mesh.position.y = armory.y + armory.h; } // 과녁에서 떨어지는 중
   const p = player; if (!p || !p.alive || state !== 'play') return;
   const w = armory.w;
-  if (w === p.baseWeapon || w === p.extraWeapon) return; // 이미 가진 무기는 먹을 수 없음
+  if (w === p.baseWeapon || w === p.extraWeapon || (w === 5 && p.bazooka)) return; // 이미 가진 무기는 먹을 수 없음
   const dx = p.pos.x - armory.x, dz = p.pos.z - armory.z;
   if (dx * dx + dz * dz < 1.5 && Math.abs(p.pos.y - armory.y) < 2.2) {
-    const had = p.extraWeapon >= 0 && p.weapon === p.extraWeapon;
-    p.extraWeapon = w; if (had && p.arnoldUntil <= gameTime) { p.weapon = w; zoomActive = false; }
+    if (w === 5) p.bazooka = true; // 바주카포는 무기고로 얻은 첫 무기(extraWeapon)를 대체하지 않고 따로 보유
+    else { const had = p.extraWeapon >= 0 && p.weapon === p.extraWeapon; p.extraWeapon = w; if (had && p.arnoldUntil <= gameTime) { p.weapon = w; zoomActive = false; } }
     addFeed(`무기고: ${WEAPONS[w].name} 획득 — 숫자키로 무기 전환`, true); tone(700, 1500, 0.3, 'triangle', 0.18);
     removeArmory(); if (NET.on) netSend({ t: 'armt' });
     if (w < 4) spawnTarget(w % 2); // 숨겨진 무기를 먹으면 이어서 피라미드 지하 방에 과녁이 자동으로 생김 (바주카포를 먹을 때는 생기지 않음)
   }
 }
-function ownedWeapons(p) { const l = [p.baseWeapon]; if (p.extraWeapon >= 0) l.push(p.extraWeapon); if (p.arnoldUntil > gameTime) l.push(4); if (p.fallen) l.push(6); return l; } // 기관총(아놀드)도 숫자키 5로 전환
+function ownedWeapons(p) { const l = [p.baseWeapon]; if (p.extraWeapon >= 0) l.push(p.extraWeapon); if (p.bazooka) l.push(5); if (p.arnoldUntil > gameTime) l.push(4); if (p.fallen) l.push(6); return l; } // 기관총(아놀드)도 숫자키 5로 전환
 function switchWeapon(i) {
   const p = player; if (!p || !p.alive || i === p.weapon || !ownedWeapons(p).includes(i)) return;
   p.weapon = i; zoomActive = false; tone(700, 900, 0.05, 'square', 0.04);
